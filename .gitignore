@@ -8,6 +8,7 @@ Environment.props*
 
 # IDE
 .vs/
+.vscode/
 .idea/
 *.user
 *.suo
