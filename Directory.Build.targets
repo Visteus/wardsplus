@@ -1,0 +1,153 @@
+<!--
+  Shared build logic for every mod project under src/. MSBuild imports this file automatically
+  AFTER each .csproj, so it can use the ModName / ModAuthor / ModGuid / Version the project sets.
+
+  What it does:
+    1. Validates paths and mod identity before compiling (clear errors instead of 200 missing-type errors).
+    2. References BepInEx + Harmony from your Gale profile and the game DLLs from your Valheim install.
+    3. Generates a ModInfo class (Guid, Name, Author, Version) so the version lives only in the .csproj.
+    4. Debug + Release: copies the DLL into the Gale profile's plugins folder (if DeployToProfile=true).
+    5. Release only: validates Thunderstore files and writes dist\<Author>-<ModName>-<Version>.zip.
+-->
+<Project>
+
+  <PropertyGroup>
+    <ValheimManaged>$(ValheimInstall)\valheim_Data\Managed</ValheimManaged>
+    <BepInExCore>$(BepInExProfile)\BepInEx\core</BepInExCore>
+    <BepInExPlugins>$(BepInExProfile)\BepInEx\plugins</BepInExPlugins>
+    <ModPackageName>$(ModAuthor)-$(ModName)</ModPackageName>
+    <ThunderstoreDir>$(MSBuildProjectDirectory)\Thunderstore\</ThunderstoreDir>
+  </PropertyGroup>
+
+  <!-- ===== References (Private=false: never copy game/loader DLLs into the output) ===== -->
+  <ItemGroup>
+    <Reference Include="BepInEx" HintPath="$(BepInExCore)\BepInEx.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(BepInExCore)\0Harmony.dll" Private="false" />
+    <Reference Include="@(ValheimReference)" HintPath="$(ValheimManaged)\%(Identity).dll" Private="false" />
+  </ItemGroup>
+
+  <!-- ===== 1. Sanity checks ===== -->
+  <Target Name="ValidateModSetup" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)Environment.props')"
+           Text="Environment.props not found. Copy Environment.props.example to Environment.props and set your paths." />
+    <Error Condition="!Exists('$(ValheimManaged)\assembly_valheim.dll')"
+           Text="Valheim not found: '$(ValheimManaged)\assembly_valheim.dll' does not exist. Fix ValheimInstall in Environment.props." />
+    <Error Condition="!Exists('$(BepInExCore)\BepInEx.dll')"
+           Text="BepInEx not found: '$(BepInExCore)\BepInEx.dll' does not exist. Fix BepInExProfile in Environment.props (it must point at a Gale profile folder that contains BepInEx\)." />
+    <Error Condition="'$(ModName)' == '' Or '$(ModAuthor)' == '' Or '$(ModGuid)' == ''"
+           Text="ModName, ModAuthor and ModGuid must be set in the .csproj." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(ModName)', '^[A-Za-z0-9_]+$'))"
+           Text="ModName '$(ModName)' is invalid for Thunderstore: use only letters, digits and underscores." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(Version)', '^\d+\.\d+\.\d+$'))"
+           Text="Version '$(Version)' is invalid: Thunderstore and BepInEx need plain Major.Minor.Patch (e.g. 1.2.3)." />
+  </Target>
+
+  <!-- ===== 3. Generated ModInfo constants (obj\...\ModInfo.g.cs) ===== -->
+  <Target Name="GenerateModInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <ModInfoFile>$(IntermediateOutputPath)ModInfo.g.cs</ModInfoFile>
+      <_ModInfoText>// &lt;auto-generated /&gt; by Directory.Build.targets from the .csproj. Do not edit.
+namespace $(RootNamespace)
+{
+    internal static class ModInfo
+    {
+        public const string Guid = "$(ModGuid)"%3B
+        public const string Name = "$(ModName)"%3B
+        public const string Author = "$(ModAuthor)"%3B
+        public const string Version = "$(Version)"%3B
+    }
+}</_ModInfoText>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(ModInfoFile)" Lines="$(_ModInfoText)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(ModInfoFile)" />
+      <FileWrites Include="$(ModInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- ===== 4. Deploy to the Gale profile ===== -->
+  <Target Name="DeployToProfile" AfterTargets="Build" Condition="'$(DeployToProfile)' == 'true'">
+    <PropertyGroup>
+      <_DeployDir>$(BepInExPlugins)\$(ModPackageName)</_DeployDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_DeployFile Include="$(TargetPath)" />
+      <_DeployFile Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    </ItemGroup>
+    <!-- ContinueOnError: if the game is running and has the DLL locked, warn instead of failing the build. -->
+    <Copy SourceFiles="@(_DeployFile)" DestinationFolder="$(_DeployDir)" ContinueOnError="true" />
+    <Message Importance="high" Text="$(ModName) deployed -> $(_DeployDir)" />
+  </Target>
+
+  <!-- ===== 5. Thunderstore package (Release only) ===== -->
+  <UsingTask TaskName="PrepareThunderstoreManifest" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ThunderstoreDir ParameterType="System.String" Required="true" />
+      <OutputFile ParameterType="System.String" Required="true" />
+      <ModName ParameterType="System.String" Required="true" />
+      <Version ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        string manifestPath = Path.Combine(ThunderstoreDir, "manifest.json");
+        string iconPath = Path.Combine(ThunderstoreDir, "icon.png");
+        string readmePath = Path.Combine(ThunderstoreDir, "README.md");
+
+        if (!File.Exists(manifestPath)) { Log.LogError("Missing " + manifestPath); return false; }
+        if (!File.Exists(readmePath)) { Log.LogError("Missing " + readmePath + " (Thunderstore requires a README.md)."); return false; }
+        if (!File.Exists(iconPath)) { Log.LogError("Missing " + iconPath + " (Thunderstore requires a 256x256 icon.png)."); return false; }
+
+        // icon.png must be a real PNG of exactly 256x256.
+        byte[] head = new byte[24];
+        using (var fs = File.OpenRead(iconPath)) { fs.Read(head, 0, head.Length); }
+        bool isPng = head[0] == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47;
+        int w = (head[16] << 24) | (head[17] << 16) | (head[18] << 8) | head[19];
+        int h = (head[20] << 24) | (head[21] << 16) | (head[22] << 8) | head[23];
+        if (!isPng || w != 256 || h != 256) { Log.LogError("icon.png must be a PNG of exactly 256x256 (found " + (isPng ? w + "x" + h : "a non-PNG file") + ")."); return false; }
+
+        string json = File.ReadAllText(manifestPath);
+        foreach (var key in new[] { "name", "version_number", "website_url", "description", "dependencies" })
+        {
+            if (!Regex.IsMatch(json, "\"" + key + "\"\\s*:")) { Log.LogError("manifest.json is missing the required \"" + key + "\" field."); return false; }
+        }
+
+        var desc = Regex.Match(json, "\"description\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+        if (desc.Success && desc.Groups[1].Value.Length > 250) { Log.LogError("manifest.json description is " + desc.Groups[1].Value.Length + " characters; Thunderstore allows 250."); return false; }
+
+        if (!json.Contains("denikson-BepInExPack_Valheim-"))
+            Log.LogWarning("manifest.json does not depend on denikson-BepInExPack_Valheim. Almost every Valheim mod should.");
+
+        // The .csproj is the single source of truth for name and version: stamp them in.
+        json = Regex.Replace(json, "\"name\"\\s*:\\s*\"[^\"]*\"", "\"name\": \"" + ModName + "\"");
+        json = Regex.Replace(json, "\"version_number\"\\s*:\\s*\"[^\"]*\"", "\"version_number\": \"" + Version + "\"");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(OutputFile));
+        File.WriteAllText(OutputFile, json, new System.Text.UTF8Encoding(false)); // Thunderstore rejects a BOM.
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="PackageThunderstore" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <_StageDir>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)thunderstore\</_StageDir>
+      <_ZipFile>$(DistDir)$(ModPackageName)-$(Version).zip</_ZipFile>
+    </PropertyGroup>
+    <RemoveDir Directories="$(_StageDir)" />
+    <PrepareThunderstoreManifest ThunderstoreDir="$(ThunderstoreDir)" OutputFile="$(_StageDir)manifest.json"
+                                 ModName="$(ModName)" Version="$(Version)" />
+    <ItemGroup>
+      <_PackageRootFile Include="$(ThunderstoreDir)icon.png;$(ThunderstoreDir)README.md" />
+      <_PackageRootFile Include="$(ThunderstoreDir)CHANGELOG.md" Condition="Exists('$(ThunderstoreDir)CHANGELOG.md')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PackageRootFile)" DestinationFolder="$(_StageDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_StageDir)plugins" />
+    <MakeDir Directories="$(DistDir)" />
+    <ZipDirectory SourceDirectory="$(_StageDir)" DestinationFile="$(_ZipFile)" Overwrite="true" />
+    <Message Importance="high" Text="Thunderstore package -> $(_ZipFile)" />
+  </Target>
+
+</Project>

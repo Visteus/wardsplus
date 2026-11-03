@@ -1,0 +1,53 @@
+<!--
+  Shared settings for every mod project under src/. MSBuild imports this file automatically
+  BEFORE each .csproj, so a project can override anything set here.
+-->
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)Environment.props" Condition="Exists('$(MSBuildThisFileDirectory)Environment.props')" />
+
+  <PropertyGroup>
+    <!-- Valheim runs on Unity 6 Mono, whose game assemblies are built against .NET Standard 2.1. -->
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+    <!-- Required by the assembly publicizer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!--
+      MSB3277: Valheim's DLLs reference .NET Framework-era facade versions (e.g. System.Net.Http 4.2.0.0) that
+      differ from the .NET Standard 2.1 reference pack. The conflict is harmless at runtime; hide the noise.
+    -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+    <!-- Release builds drop Thunderstore zips here. -->
+    <DistDir>$(MSBuildThisFileDirectory)dist\</DistDir>
+  </PropertyGroup>
+
+  <!--
+    Game assemblies every mod compiles against, resolved from <ValheimInstall>\valheim_Data\Managed.
+    Publicize="true" exposes private/protected members at compile time (see README).
+    A project can add more with <ValheimReference Include="UnityEngine.SomeModule" /> in its .csproj.
+  -->
+  <ItemGroup>
+    <ValheimReference Include="assembly_valheim" Publicize="true" />
+    <ValheimReference Include="assembly_utils" Publicize="true" />
+    <ValheimReference Include="assembly_guiutils" Publicize="true" />
+    <ValheimReference Include="UnityEngine" />
+    <ValheimReference Include="UnityEngine.CoreModule" />
+    <ValheimReference Include="UnityEngine.PhysicsModule" />
+    <ValheimReference Include="UnityEngine.InputLegacyModule" />
+    <ValheimReference Include="UnityEngine.AnimationModule" />
+    <ValheimReference Include="UnityEngine.AudioModule" />
+    <ValheimReference Include="UnityEngine.ParticleSystemModule" />
+    <ValheimReference Include="UnityEngine.IMGUIModule" />
+    <ValheimReference Include="UnityEngine.TextRenderingModule" />
+    <ValheimReference Include="UnityEngine.UI" />
+    <ValheimReference Include="UnityEngine.UIModule" />
+    <ValheimReference Include="Unity.TextMeshPro" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Publicizes the references marked Publicize="true". Build-time only, never shipped. -->
+    <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+dist/
+
+# Machine-specific paths (see Environment.props.example)
+Environment.props*
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+WardsPlus.sln
