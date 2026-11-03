@@ -36,6 +36,8 @@ namespace WardsPlus.UI
         private static float s_pendingRange = -1f;
         private static float s_nextRangeSend;
         private static float s_lastLocalEdit = -100f;
+        /// <summary>True while the panel itself is changing controls; their callbacks must not send RPCs.</summary>
+        private static bool s_applyingState;
 
         public static bool IsOpen => s_root && s_root.activeSelf;
 
@@ -106,14 +108,27 @@ namespace WardsPlus.UI
 
         private static void Bind(WardBase ward)
         {
+            // Finish any edit for the previous ward before switching, then start clean for this one.
             FlushPendingRange(force: true);
             ClearExtras();
+            s_pendingRange = -1f;
+            s_lastLocalEdit = -100f;
 
             s_ward = ward;
             s_title.text = Localization.instance.Localize(ward.m_name);
-            s_range.minValue = Mathf.Min(ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
-            s_range.maxValue = Mathf.Max(ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
-            s_lastLocalEdit = -100f;
+
+            // Changing min/max makes Unity clamp the slider's current value and fire onValueChanged,
+            // which must not be mistaken for the player dragging it (it would overwrite the ward's range).
+            s_applyingState = true;
+            try
+            {
+                s_range.minValue = Mathf.Min(ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
+                s_range.maxValue = Mathf.Max(ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
+            }
+            finally
+            {
+                s_applyingState = false;
+            }
             SyncFromWard();
 
             ward.PopulatePanel(s_extras);
@@ -148,14 +163,19 @@ namespace WardsPlus.UI
             }
         }
 
+        // Controls only ever send values that came from the player. Anything the panel sets itself
+        // (binding a ward, syncing another player's change) must not echo back as a write.
         private static void OnEnabledChanged(bool value)
         {
-            if (s_ward)
-                s_ward.RequestSetBool(ZdoKeys.Enabled, value);
+            if (s_applyingState || !s_ward)
+                return;
+            s_ward.RequestSetBool(ZdoKeys.Enabled, value);
         }
 
         private static void OnRangeChanged(float value)
         {
+            if (s_applyingState || !s_ward)
+                return;
             s_rangeValue.text = $"{value:0}m";
             s_pendingRange = value;
             s_lastLocalEdit = Time.time;
