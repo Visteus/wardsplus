@@ -81,16 +81,16 @@ namespace WardsPlus.Config
                 defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(0.25f, 1f, 0.35f));
 
             Wards[WardType.Refuel] = BindWard(cfg, WardType.Refuel,
-                recipe: "FineWood:10,Stone:10,Coal:25,SurtlingCore:1", station: "forge",
+                recipe: "FineWood:10,Stone:10,Coal:25,SurtlingCore:1", station: "piece_workbench",
                 defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(1f, 0.5f, 0.1f));
 
             Wards[WardType.Spawnproof] = BindWard(cfg, WardType.Spawnproof,
-                recipe: "ElderBark:10,Stone:50,SurtlingCore:1", station: "forge",
+                recipe: "ElderBark:10,Stone:50,SurtlingCore:1", station: "piece_workbench",
                 defaultRange: 30f, minRange: 10f, maxRange: 60f, color: new Color(0.2f, 0.6f, 1f));
 
             Wards[WardType.Defender] = BindWard(cfg, WardType.Defender,
-                recipe: "YggdrasilWood:10,BlackMarble:10,BlackCore:1,DragonTear:5", station: "blackforge",
-                defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(0.7f, 0.3f, 1f));
+                recipe: "YggdrasilWood:10,BlackMarble:10,BlackCore:1,DragonTear:5", station: "forge",
+                defaultRange: 20f, minRange: 5f, maxRange: 20f, color: new Color(0.7f, 0.3f, 1f));
         }
 
         private static WardConfig BindWard(ConfigFile cfg, WardType type, string recipe, string station,
