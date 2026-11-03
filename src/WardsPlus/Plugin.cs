@@ -4,6 +4,7 @@ using HarmonyLib;
 using Jotunn.Utils;
 using WardsPlus.Config;
 using WardsPlus.Pieces;
+using WardsPlus.UI;
 using WardsPlus.Util;
 
 namespace WardsPlus
@@ -27,6 +28,7 @@ namespace WardsPlus
             PluginConfig.Bind(Config);
             Translations.Load();
             WardPieces.Init();
+            PluginConfig.RememberPanelPosition.SettingChanged += (_, __) => WardPanel.OnRememberPositionChanged();
 
             _harmony.PatchAll();
         }

@@ -1,8 +1,9 @@
-using Jotunn.GUI;
 using Jotunn.Managers;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using WardsPlus.Components;
+using WardsPlus.Config;
 using WardsPlus.Util;
 
 namespace WardsPlus.UI
@@ -25,6 +26,9 @@ namespace WardsPlus.UI
         private static WardBase s_noContainerWard;
 
         private static GameObject s_root;
+        private static Canvas s_canvas;
+        /// <summary>True while the panel is layered below the inventory screen for a vanilla pop-up.</summary>
+        private static bool s_sortedBelow;
         private static Text s_title;
         private static Toggle s_enabled;
         private static Slider s_range;
@@ -38,6 +42,15 @@ namespace WardsPlus.UI
         private static float s_lastLocalEdit = -100f;
         /// <summary>True while the panel itself is changing controls; their callbacks must not send RPCs.</summary>
         private static bool s_applyingState;
+
+        /// <summary>
+        /// Where the panel was last placed by default, for which ward type, and how far the player has
+        /// dragged it from the default spot, per ward type (types use different default spots).
+        /// </summary>
+        private static Vector3 s_defaultPosition;
+        private static WardType s_placedType;
+        private static bool s_placed;
+        private static readonly Dictionary<WardType, Vector3> s_dragOffsets = new Dictionary<WardType, Vector3>();
 
         public static bool IsOpen => s_root && s_root.activeSelf;
 
@@ -66,10 +79,17 @@ namespace WardsPlus.UI
                 return;
 
             if (ward != s_ward)
-                Bind(ward);
+                Bind(gui, ward);
 
             if (!s_root.activeSelf)
+            {
                 s_root.SetActive(true);
+                UpdateSorting(gui, force: true);
+            }
+            else
+            {
+                UpdateSorting(gui, force: false);
+            }
 
             ward.ShowAreaMarker();
             FlushPendingRange(force: false);
@@ -106,13 +126,16 @@ namespace WardsPlus.UI
             return null;
         }
 
-        private static void Bind(WardBase ward)
+        private static void Bind(InventoryGui gui, WardBase ward)
         {
             // Finish any edit for the previous ward before switching, then start clean for this one.
             FlushPendingRange(force: true);
             ClearExtras();
             s_pendingRange = -1f;
             s_lastLocalEdit = -100f;
+
+            CaptureDragOffset();
+            PlacePanel(gui, ward);
 
             s_ward = ward;
             s_title.text = Localization.instance.Localize(ward.m_name);
@@ -143,6 +166,7 @@ namespace WardsPlus.UI
             s_pendingRange = -1f;
             if (s_root && s_root.activeSelf)
             {
+                CaptureDragOffset();
                 ClearExtras();
                 s_root.SetActive(false);
             }
@@ -214,9 +238,14 @@ namespace WardsPlus.UI
             GUIManager ui = GUIManager.Instance;
 
             s_root = ui.CreateWoodpanel(anchor.parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                Vector2.zero, Width, 200f, true);
+                Vector2.zero, Width, 200f, draggable: false);
             s_root.name = "WardsPlus_WardPanel";
-            PlaceBesideContainer((RectTransform)s_root.transform, anchor);
+            // Top-left pivot: the panel hangs below whatever it is placed under and grows downward, so
+            // ward-specific controls never push it up over the inventory. Positioned per open in PlacePanel.
+            var rect = (RectTransform)s_root.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0f, 1f);
+            s_placed = false;
 
             var layout = s_root.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(20, 20, 16, 20);
@@ -227,8 +256,13 @@ namespace WardsPlus.UI
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
             s_root.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            if (!s_root.GetComponent<DragWindowCntrl>())
-                s_root.AddComponent<DragWindowCntrl>();
+            // Our own dragger: Jotunn's DragWindowCntrl clamps as if the pivot were centered.
+            s_root.AddComponent<PanelDragger>();
+
+            // Own canvas so the panel can draw above the crafting panel and menu bar; it needs its own
+            // raycaster to keep receiving clicks. Sorting is applied in UpdateSorting.
+            s_canvas = s_root.AddComponent<Canvas>();
+            s_root.AddComponent<GraphicRaycaster>();
 
             // Title
             s_title = CreateLabel(s_root.transform, "", ui.NorseBold, 28, GUIManager.Instance.ValheimOrange, 36f);
@@ -279,18 +313,121 @@ namespace WardsPlus.UI
         }
 
         /// <summary>
-        /// Default spot: top-left corner just right of the container panel, in the same parent space so it
-        /// rides along with the inventory screen's open/close animation. Players can drag it elsewhere.
+        /// Default spot, left edges aligned:
+        /// - wards with an inventory: directly below the container panel;
+        /// - wards without one (Spawnproof): directly below the player inventory, where the container would be.
+        /// The distance the player dragged the panel is remembered per ward type and kept on top of that
+        /// type's default, so a drag that suits one layout never pushes another type's panel off screen.
         /// </summary>
-        private static void PlaceBesideContainer(RectTransform panel, RectTransform container)
+        private static void PlacePanel(InventoryGui gui, WardBase ward)
+        {
+            var panel = (RectTransform)s_root.transform;
+            RectTransform anchor = ward.m_container ? gui.m_container : gui.m_player;
+            if (!anchor)
+                anchor = gui.m_container;
+
+            s_defaultPosition = BottomLeftInParentSpace(anchor, panel.parent) + new Vector3(0f, -Gap, 0f);
+            s_dragOffsets.TryGetValue(ward.Type, out Vector3 offset);
+            panel.localPosition = s_defaultPosition + offset;
+            s_placedType = ward.Type;
+            s_placed = true;
+        }
+
+        /// <summary>
+        /// Chooses the panel's drawing layer:
+        /// - normally one sorting step above everything on the inventory screen (its root canvas and any
+        ///   sub-canvases), so the crafting panel and menu bar can never cover it and make it unreachable;
+        /// - while a vanilla pop-up from the inventory screen is open (Compendium, skills, trophies, ...),
+        ///   one step below the inventory screen, so the pop-up draws over it and gets every click.
+        /// Only the layer number changes when switching, unless <paramref name="force"/> is set (on every
+        /// open, because Unity can drop overrideSorting when a nested canvas is deactivated and reactivated).
+        /// </summary>
+        private static void UpdateSorting(InventoryGui gui, bool force)
+        {
+            if (!s_canvas)
+                return;
+
+            bool below = IsVanillaDialogOpen(gui);
+            if (!force && below == s_sortedBelow)
+                return;
+            s_sortedBelow = below;
+
+            Canvas root = s_canvas.transform.parent ? s_canvas.transform.parent.GetComponentInParent<Canvas>() : null;
+            if (root)
+                root = root.rootCanvas;
+            int rootOrder = root ? root.sortingOrder : 0;
+
+            int order;
+            if (below)
+            {
+                order = rootOrder - 1;
+            }
+            else
+            {
+                int highest = rootOrder;
+                foreach (Canvas canvas in gui.GetComponentsInChildren<Canvas>(true))
+                {
+                    if (canvas != s_canvas && canvas.overrideSorting)
+                        highest = Mathf.Max(highest, canvas.sortingOrder);
+                }
+                order = highest + 1;
+            }
+
+            s_canvas.overrideSorting = true;
+            if (root)
+                s_canvas.sortingLayerID = root.sortingLayerID;
+            s_canvas.sortingOrder = order;
+        }
+
+        /// <summary>
+        /// The pop-ups the inventory screen can open on top of itself; the same set InventoryGui.Update
+        /// checks before letting Escape close the inventory.
+        /// </summary>
+        private static bool IsVanillaDialogOpen(InventoryGui gui)
+        {
+            return (gui.m_textsDialog && gui.m_textsDialog.gameObject.activeSelf)
+                || (gui.m_skillsDialog && gui.m_skillsDialog.gameObject.activeSelf)
+                || (gui.m_trophiesPanel && gui.m_trophiesPanel.activeSelf)
+                || (gui.m_achievementsPanel && gui.m_achievementsPanel.gameObject.activeSelf)
+                || (gui.m_splitDialog && gui.m_splitDialog.IsActive)
+                || (gui.m_variantDialog && gui.m_variantDialog.gameObject.activeSelf);
+        }
+
+        /// <summary>Remembers how far the player has dragged the panel from the open ward type's default spot.</summary>
+        private static void CaptureDragOffset()
+        {
+            if (!PluginConfig.RememberPanelPosition.Value)
+            {
+                s_dragOffsets.Clear();
+                return;
+            }
+            if (s_placed && s_root && s_root.activeSelf)
+                s_dragOffsets[s_placedType] = s_root.transform.localPosition - s_defaultPosition;
+        }
+
+        /// <summary>
+        /// Hooked to the "Remember Panel Position" setting. Turning it off forgets every remembered drag
+        /// (so off-then-on acts as a reset) and snaps an open panel back to its default spot.
+        /// </summary>
+        public static void OnRememberPositionChanged()
+        {
+            if (PluginConfig.RememberPanelPosition.Value)
+                return;
+            s_dragOffsets.Clear();
+            if (s_placed && s_root)
+                s_root.transform.localPosition = s_defaultPosition;
+        }
+
+        /// <summary>
+        /// Bottom-left corner of <paramref name="rect"/> expressed in <paramref name="space"/>'s local
+        /// coordinates. Going through world space keeps it correct even if the two have different parents,
+        /// and both live under the animated inventory root, so the result doesn't depend on animation state.
+        /// </summary>
+        private static Vector3 BottomLeftInParentSpace(RectTransform rect, Transform space)
         {
             var corners = new Vector3[4];
-            container.GetLocalCorners(corners); // 0 bottom-left, 1 top-left, 2 top-right, 3 bottom-right
-            Vector3 topRight = container.localPosition + Vector3.Scale(container.localScale, corners[2]);
-
-            panel.anchorMin = panel.anchorMax = new Vector2(0.5f, 0.5f);
-            panel.pivot = new Vector2(0f, 1f);
-            panel.localPosition = topRight + new Vector3(Gap, 0f, 0f);
+            rect.GetWorldCorners(corners); // 0 bottom-left, 1 top-left, 2 top-right, 3 bottom-right
+            return space.InverseTransformPoint(corners[0]);
         }
 
         private static Transform CreateRow(Transform parent, float height)

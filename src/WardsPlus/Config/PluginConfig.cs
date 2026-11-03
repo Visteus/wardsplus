@@ -71,10 +71,16 @@ namespace WardsPlus.Config
         /// <summary>Whether the vanilla ward's spherical glow orb is shown on active wards.</summary>
         public static ConfigEntry<bool> ShowGlowOrb;
 
+        /// <summary>Whether the ward settings panel keeps the position the player dragged it to.</summary>
+        public static ConfigEntry<bool> RememberPanelPosition;
+
         public static void Bind(ConfigFile cfg)
         {
             ShowGlowOrb = cfg.Bind("General", "Show Glow Orb", false,
-                "Show the vanilla ward's spherical glow above active wards. When off, only the colored magic lines glow. Client-side. Requires a restart.");
+                "Show the vanilla ward's spherical glow above active wards. When off, only the colored magic lines glow. Client-side. Requires a reload.");
+
+            RememberPanelPosition = cfg.Bind("General", "Remember Panel Position", false,
+                "Keep the ward settings panel where you last dragged it. When off, it always opens at its default spot, and turning this off clears the remembered position. Client-side, does NOT require a reload.");
 
             Wards[WardType.Repair] = BindWard(cfg, WardType.Repair,
                 recipe: "RoundLog:10,Stone:10,GreydwarfEye:50", station: "piece_workbench",
