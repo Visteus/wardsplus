@@ -1,10 +1,12 @@
 using Jotunn.Managers;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using WardsPlus.Components;
 using WardsPlus.Config;
 using WardsPlus.Util;
+using Object = UnityEngine.Object;
 
 namespace WardsPlus.UI
 {
@@ -18,9 +20,8 @@ namespace WardsPlus.UI
     {
         private const float Width = 320f;
         private const float Gap = 12f;
-        private const float RangeSendInterval = 0.2f;
-        private const float LocalEditGrace = 0.5f;
         private static readonly Color LabelColor = new Color(0.86f, 0.86f, 0.86f);
+        private static readonly Color NoteColor = new Color(0.7f, 0.7f, 0.7f);
 
         /// <summary>Ward opened without a container (Spawnproof); null otherwise.</summary>
         private static WardBase s_noContainerWard;
@@ -31,17 +32,13 @@ namespace WardsPlus.UI
         private static bool s_sortedBelow;
         private static Text s_title;
         private static Toggle s_enabled;
-        private static Slider s_range;
-        private static Text s_rangeValue;
+        private static SettingSlider s_rangeSlider;
         private static RectTransform s_extras;
+        /// <summary>Sliders a ward type added to the extras area for the currently bound ward.</summary>
+        private static readonly List<SettingSlider> s_extraSliders = new List<SettingSlider>();
 
         private static WardBase s_ward;
         private static uint s_lastRevision;
-        private static float s_pendingRange = -1f;
-        private static float s_nextRangeSend;
-        private static float s_lastLocalEdit = -100f;
-        /// <summary>True while the panel itself is changing controls; their callbacks must not send RPCs.</summary>
-        private static bool s_applyingState;
 
         /// <summary>
         /// Where the panel was last placed by default, for which ward type, and how far the player has
@@ -92,9 +89,11 @@ namespace WardsPlus.UI
             }
 
             ward.ShowAreaMarker();
-            FlushPendingRange(force: false);
             if (ward.DataRevision != s_lastRevision)
                 SyncFromWard();
+            s_rangeSlider.Update();
+            foreach (SettingSlider slider in s_extraSliders)
+                slider.Update();
             ward.RefreshPanel();
         }
 
@@ -128,30 +127,15 @@ namespace WardsPlus.UI
 
         private static void Bind(InventoryGui gui, WardBase ward)
         {
-            // Finish any edit for the previous ward before switching, then start clean for this one.
-            FlushPendingRange(force: true);
+            // Finish any edits for the previous ward before switching (Bind flushes to the old ward first).
             ClearExtras();
-            s_pendingRange = -1f;
-            s_lastLocalEdit = -100f;
+            s_rangeSlider.Bind(ward, ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
 
             CaptureDragOffset();
             PlacePanel(gui, ward);
 
             s_ward = ward;
             s_title.text = Localization.instance.Localize(ward.m_name);
-
-            // Changing min/max makes Unity clamp the slider's current value and fire onValueChanged,
-            // which must not be mistaken for the player dragging it (it would overwrite the ward's range).
-            s_applyingState = true;
-            try
-            {
-                s_range.minValue = Mathf.Min(ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
-                s_range.maxValue = Mathf.Max(ward.Config.MinRange.Value, ward.Config.MaxRange.Value);
-            }
-            finally
-            {
-                s_applyingState = false;
-            }
             SyncFromWard();
 
             ward.PopulatePanel(s_extras);
@@ -160,14 +144,12 @@ namespace WardsPlus.UI
 
         private static void Hide()
         {
-            if (s_ward)
-                FlushPendingRange(force: true);
+            s_rangeSlider?.Unbind();
             s_ward = null;
-            s_pendingRange = -1f;
+            ClearExtras();
             if (s_root && s_root.activeSelf)
             {
                 CaptureDragOffset();
-                ClearExtras();
                 s_root.SetActive(false);
             }
         }
@@ -177,52 +159,54 @@ namespace WardsPlus.UI
         {
             s_lastRevision = s_ward.DataRevision;
             s_enabled.SetIsOnWithoutNotify(s_ward.IsEnabled());
-
-            // Don't yank the slider out from under a drag that hasn't round-tripped yet.
-            if (s_pendingRange < 0f && Time.time - s_lastLocalEdit > LocalEditGrace)
-            {
-                float range = s_ward.GetRange();
-                s_range.SetValueWithoutNotify(range);
-                s_rangeValue.text = $"{range:0}m";
-            }
+            s_rangeSlider.Sync();
+            foreach (SettingSlider slider in s_extraSliders)
+                slider.Sync();
         }
 
-        // Controls only ever send values that came from the player. Anything the panel sets itself
-        // (binding a ward, syncing another player's change) must not echo back as a write.
+        // Only player clicks reach this: the panel updates the toggle with SetIsOnWithoutNotify.
         private static void OnEnabledChanged(bool value)
         {
-            if (s_applyingState || !s_ward)
-                return;
-            s_ward.RequestSetBool(ZdoKeys.Enabled, value);
+            if (s_ward)
+                s_ward.RequestSetBool(ZdoKeys.Enabled, value);
         }
 
-        private static void OnRangeChanged(float value)
-        {
-            if (s_applyingState || !s_ward)
-                return;
-            s_rangeValue.text = $"{value:0}m";
-            s_pendingRange = value;
-            s_lastLocalEdit = Time.time;
-        }
-
-        /// <summary>Rate-limits range RPCs while the slider is dragged.</summary>
-        private static void FlushPendingRange(bool force)
-        {
-            if (s_pendingRange < 0f || !s_ward)
-                return;
-            if (!force && Time.time < s_nextRangeSend)
-                return;
-            s_ward.RequestSetFloat(ZdoKeys.Range, s_pendingRange);
-            s_pendingRange = -1f;
-            s_nextRangeSend = Time.time + RangeSendInterval;
-        }
-
+        /// <summary>Flushes and drops the extra sliders, then removes every ward-specific control.</summary>
         private static void ClearExtras()
         {
+            foreach (SettingSlider slider in s_extraSliders)
+                slider.Unbind();
+            s_extraSliders.Clear();
+
             if (!s_extras)
                 return;
+            // Immediate, so the next ward's PopulatePanel/childCount never sees the old controls.
             for (int i = s_extras.childCount - 1; i >= 0; i--)
-                Object.Destroy(s_extras.GetChild(i).gameObject);
+                Object.DestroyImmediate(s_extras.GetChild(i).gameObject);
+        }
+
+        // ---------------------------------------------------------------- helpers for WardBase.PopulatePanel
+
+        /// <summary>
+        /// Adds a labelled slider for a float setting of the bound ward. It syncs, rate-limits and flushes
+        /// like the Range slider. <paramref name="read"/> returns the ward's current (clamped) value.
+        /// </summary>
+        public static void AddSlider(Transform parent, string labelToken, int key, float min, float max,
+            Func<WardBase, float> read, Func<float, string> format)
+        {
+            var slider = new SettingSlider(CreateSliderControl(parent, labelToken, out Text valueText), valueText, key, read, format);
+            s_extraSliders.Add(slider);
+            if (s_ward)
+                slider.Bind(s_ward, min, max);
+        }
+
+        /// <summary>Adds small wrapped text (hints, accepted items...). Its height follows the text.</summary>
+        public static Text AddNote(Transform parent, string text)
+        {
+            Text note = CreateLabel(parent, text, GUIManager.Instance.AveriaSerif, 15, NoteColor, -1f);
+            note.horizontalOverflow = HorizontalWrapMode.Wrap;
+            note.verticalOverflow = VerticalWrapMode.Overflow;
+            return note;
         }
 
         // ---------------------------------------------------------------- construction
@@ -280,22 +264,9 @@ namespace WardsPlus.UI
             s_enabled = toggleGo.GetComponent<Toggle>();
             s_enabled.onValueChanged.AddListener(OnEnabledChanged);
 
-            // Range header row
-            Transform rangeRow = CreateRow(s_root.transform, 26f);
-            Text rangeLabel = CreateLabel(rangeRow, Localization.instance.Localize("$wp_range"), ui.AveriaSerifBold, 18, LabelColor, 26f);
-            rangeLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
-            s_rangeValue = CreateLabel(rangeRow, "", ui.AveriaSerifBold, 18, GUIManager.Instance.ValheimYellow, 26f);
-            s_rangeValue.alignment = TextAnchor.MiddleRight;
-            s_rangeValue.GetComponent<LayoutElement>().preferredWidth = 70f;
-
-            // Range slider
-            GameObject sliderGo = DefaultControls.CreateSlider(ui.ValheimControlResources);
-            sliderGo.transform.SetParent(s_root.transform, false);
-            s_range = sliderGo.GetComponent<Slider>();
-            ui.ApplySliderStyle(s_range);
-            s_range.wholeNumbers = true;
-            s_range.onValueChanged.AddListener(OnRangeChanged);
-            AddLayout(sliderGo, -1f, 20f);
+            // Range
+            Slider range = CreateSliderControl(s_root.transform, "$wp_range", out Text rangeValue);
+            s_rangeSlider = new SettingSlider(range, rangeValue, ZdoKeys.Range, w => w.GetRange(), v => $"{v:0}m");
 
             // Ward-specific controls go here (filled by WardBase.PopulatePanel).
             var extrasGo = new GameObject("Extras", typeof(RectTransform));
@@ -430,6 +401,26 @@ namespace WardsPlus.UI
             return space.InverseTransformPoint(corners[0]);
         }
 
+        /// <summary>A "Label ..... value" header row with a whole-number Valheim-styled slider under it.</summary>
+        private static Slider CreateSliderControl(Transform parent, string labelToken, out Text valueText)
+        {
+            GUIManager ui = GUIManager.Instance;
+            Transform header = CreateRow(parent, 26f);
+            Text label = CreateLabel(header, Localization.instance.Localize(labelToken), ui.AveriaSerifBold, 18, LabelColor, 26f);
+            label.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            valueText = CreateLabel(header, "", ui.AveriaSerifBold, 18, ui.ValheimYellow, 26f);
+            valueText.alignment = TextAnchor.MiddleRight;
+            valueText.GetComponent<LayoutElement>().preferredWidth = 70f;
+
+            GameObject sliderGo = DefaultControls.CreateSlider(ui.ValheimControlResources);
+            sliderGo.transform.SetParent(parent, false);
+            var slider = sliderGo.GetComponent<Slider>();
+            ui.ApplySliderStyle(slider);
+            slider.wholeNumbers = true;
+            AddLayout(sliderGo, -1f, 20f);
+            return slider;
+        }
+
         private static Transform CreateRow(Transform parent, float height)
         {
             var row = new GameObject("Row", typeof(RectTransform));
@@ -448,7 +439,7 @@ namespace WardsPlus.UI
         private static Text CreateLabel(Transform parent, string text, Font font, int size, Color color, float height)
         {
             GameObject go = GUIManager.Instance.CreateText(text, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                Vector2.zero, font, size, color, true, Color.black, 100f, height, false);
+                Vector2.zero, font, size, color, true, Color.black, 100f, Mathf.Max(height, 20f), false);
             var label = go.GetComponent<Text>();
             label.alignment = TextAnchor.MiddleLeft;
             AddLayout(go, -1f, height);

@@ -27,6 +27,8 @@ namespace WardsPlus.Components
 
         private const float AreaMarkerLinger = 0.5f;
         private const float JitterFraction = 0.2f;
+        /// <summary>After a setting changes (enabled, range...), re-evaluate soon rather than after a full idle wait.</summary>
+        private const float SettingChangedTickDelay = 1f;
 
         private static readonly List<WardBase> s_all = new List<WardBase>();
 
@@ -37,6 +39,9 @@ namespace WardsPlus.Components
         protected Piece m_piece;
         private bool m_lastVisualEnabled;
         private bool m_visualsInitialized;
+        private Coroutine m_tickRoutine;
+        private float m_nextTickTime;
+        private bool m_inTick;
 
         public abstract WardType Type { get; }
 
@@ -62,14 +67,25 @@ namespace WardsPlus.Components
             m_nview.Register<int, bool>(WardRpcs.SetBool, RPC_SetBool);
             m_nview.Register<int, float>(WardRpcs.SetFloat, RPC_SetFloat);
 
-            // First time this ward exists: stamp the configured default range so later config changes
-            // don't silently resize already-placed wards.
-            if (m_nview.IsOwner() && !m_nview.GetZDO().GetFloat(ZdoKeys.Range, out _))
-                m_nview.GetZDO().Set(ZdoKeys.Range, Config.DefaultRange.Value);
+            // First time this ward exists: stamp the configured defaults so later config changes
+            // don't silently change already-placed wards.
+            if (m_nview.IsOwner())
+                InitDefaults(m_nview.GetZDO());
 
             s_all.Add(this);
             InvokeRepeating(nameof(UpdateVisuals), 0f, 1f);
-            StartCoroutine(TickLoop());
+            // Random first offset spreads out wards that all load at the same moment.
+            ScheduleTick(Random.Range(0f, IdleInterval));
+        }
+
+        /// <summary>
+        /// Owner only, on every load: write any setting the ZDO doesn't have yet. Overrides must call base
+        /// and only write keys that are missing.
+        /// </summary>
+        protected virtual void InitDefaults(ZDO zdo)
+        {
+            if (!zdo.GetFloat(ZdoKeys.Range, out _))
+                zdo.Set(ZdoKeys.Range, Config.DefaultRange.Value);
         }
 
         protected virtual void OnDestroy()
@@ -83,6 +99,14 @@ namespace WardsPlus.Components
 
         public float GetRange() =>
             IsValid ? Config.ClampRange(m_nview.GetZDO().GetFloat(ZdoKeys.Range, Config.DefaultRange.Value)) : 0f;
+
+        /// <summary>A float setting from the ZDO, clamped the same way the owner clamps writes.</summary>
+        public float GetFloatSetting(int key, float defaultValue) =>
+            ClampSetting(key, IsValid ? m_nview.GetZDO().GetFloat(key, defaultValue) : defaultValue);
+
+        /// <summary>Limits for float settings. Applied by the owner on every write and when reading.</summary>
+        protected virtual float ClampSetting(int key, float value) =>
+            key == ZdoKeys.Range ? Config.ClampRange(value) : value;
 
         /// <summary>ZDO data revision; changes whenever any synced setting changes.</summary>
         public uint DataRevision => IsValid ? m_nview.GetZDO().DataRevision : 0u;
@@ -107,16 +131,16 @@ namespace WardsPlus.Components
                 return;
             m_nview.GetZDO().Set(key, value);
             UpdateVisuals();
+            RequestTickSoon(SettingChangedTickDelay);
         }
 
         private void RPC_SetFloat(long sender, int key, float value)
         {
             if (!m_nview.IsOwner())
                 return;
-            if (key == ZdoKeys.Range)
-                value = Config.ClampRange(value);
-            m_nview.GetZDO().Set(key, value);
+            m_nview.GetZDO().Set(key, ClampSetting(key, value));
             UpdateVisuals();
+            RequestTickSoon(SettingChangedTickDelay);
         }
 
         // ---------------------------------------------------------------- simulation tick
@@ -128,17 +152,51 @@ namespace WardsPlus.Components
         public static float NextIdleDelay(float interval) =>
             Mathf.Max(0.1f, interval * Random.Range(1f - JitterFraction, 1f + JitterFraction));
 
-        private IEnumerator TickLoop()
+        /// <summary>(Re)starts the tick loop, with the first tick after <paramref name="delay"/> seconds.</summary>
+        private void ScheduleTick(float delay)
         {
-            // Random first offset spreads out wards that all load at the same moment.
-            yield return new WaitForSeconds(Random.Range(0f, IdleInterval));
+            if (m_tickRoutine != null)
+                StopCoroutine(m_tickRoutine);
+            m_nextTickTime = Time.time + delay;
+            m_tickRoutine = StartCoroutine(TickLoop(delay));
+        }
+
+        /// <summary>
+        /// Brings the next tick forward to at most <paramref name="delay"/> seconds from now, e.g. when fuel
+        /// is added to an idle ward. Ignored during a tick and when a tick is already due sooner.
+        /// </summary>
+        protected void RequestTickSoon(float delay)
+        {
+            if (m_inTick || !isActiveAndEnabled || Time.time + delay >= m_nextTickTime)
+                return;
+            ScheduleTick(delay);
+        }
+
+        private IEnumerator TickLoop(float firstDelay)
+        {
+            yield return new WaitForSeconds(firstDelay);
 
             while (true)
             {
                 float delay = NextIdleDelay(IdleInterval);
                 // Only the ZDO owner (one nearby peer) simulates, so effects never run twice.
                 if (IsValid && m_nview.IsOwner() && IsEnabled())
-                    delay = OnTick();
+                {
+                    m_inTick = true;
+                    try
+                    {
+                        delay = OnTick();
+                    }
+                    catch (System.Exception e)
+                    {
+                        Plugin.Log.LogError($"{GetType().Name} tick failed: {e}");
+                    }
+                    finally
+                    {
+                        m_inTick = false;
+                    }
+                }
+                m_nextTickTime = Time.time + delay;
                 yield return new WaitForSeconds(delay);
             }
         }

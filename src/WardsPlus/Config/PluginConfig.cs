@@ -39,21 +39,8 @@ namespace WardsPlus.Config
         public RequirementConfig[] ParseRecipe()
         {
             var result = new List<RequirementConfig>();
-            foreach (string raw in Recipe.Value.Split(','))
-            {
-                string entry = raw.Trim();
-                if (entry.Length == 0)
-                    continue;
-
-                string[] parts = entry.Split(':');
-                if (parts.Length != 2 || !int.TryParse(parts[1].Trim(), out int amount) || amount <= 0)
-                {
-                    Plugin.Log.LogWarning($"[{Recipe.Definition.Section}] Ignoring invalid recipe entry '{entry}'. Expected Item:Amount.");
-                    continue;
-                }
-
-                result.Add(new RequirementConfig(parts[0].Trim(), amount, 0, true));
-            }
+            foreach (KeyValuePair<string, int> pair in PluginConfig.ParseItemAmounts(Recipe))
+                result.Add(new RequirementConfig(pair.Key, pair.Value, 0, true));
             return result.ToArray();
         }
     }
@@ -74,6 +61,14 @@ namespace WardsPlus.Config
         /// <summary>Whether the ward settings panel keeps the position the player dragged it to.</summary>
         public static ConfigEntry<bool> RememberPanelPosition;
 
+        // ---- Repair Ward ----
+        /// <summary>"Item:Repairs" pairs: which items the Repair Ward burns and how many repairs each gives.</summary>
+        public static ConfigEntry<string> RepairFuel;
+        public static ConfigEntry<float> RepairScanInterval;
+        public static ConfigEntry<float> RepairInterval;
+        public static ConfigEntry<float> RepairDefaultThreshold;
+        public static ConfigEntry<string> RepairAlwaysRepair;
+
         public static void Bind(ConfigFile cfg)
         {
             ShowGlowOrb = cfg.Bind("General", "Show Glow Orb", false,
@@ -85,6 +80,7 @@ namespace WardsPlus.Config
             Wards[WardType.Repair] = BindWard(cfg, WardType.Repair,
                 recipe: "RoundLog:10,Stone:10,GreydwarfEye:50", station: "piece_workbench",
                 defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(0.25f, 1f, 0.35f));
+            BindRepair(cfg, $"{WardType.Repair} Ward");
 
             Wards[WardType.Refuel] = BindWard(cfg, WardType.Refuel,
                 recipe: "FineWood:10,Stone:10,Coal:25,SurtlingCore:1", station: "piece_workbench",
@@ -97,6 +93,50 @@ namespace WardsPlus.Config
             Wards[WardType.Defender] = BindWard(cfg, WardType.Defender,
                 recipe: "YggdrasilWood:10,BlackMarble:10,BlackCore:1,DragonTear:5", station: "forge",
                 defaultRange: 20f, minRange: 5f, maxRange: 20f, color: new Color(0.7f, 0.3f, 1f));
+        }
+
+        private static void BindRepair(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            RepairFuel = cfg.Bind(section, "Fuel", "Resin:10,GreydwarfEye:10",
+                new ConfigDescription("Items the ward burns as fuel, as Item:Repairs pairs (item prefab names), in the order they are used. " +
+                    "Each item gives that many repairs; one repair fully heals one piece.", null, admin));
+            RepairScanInterval = cfg.Bind(section, "Scan Interval", 30f,
+                new ConfigDescription("Seconds between checks for damaged pieces while nothing needs repairing (varies by ±20% so wards don't sync up).",
+                    new AcceptableValueRange<float>(5f, 600f), admin));
+            RepairInterval = cfg.Bind(section, "Repair Interval", 1f,
+                new ConfigDescription("Seconds between repairs while damaged pieces are in range.",
+                    new AcceptableValueRange<float>(0.25f, 30f), admin));
+            RepairDefaultThreshold = cfg.Bind(section, "Default Repair Below", 100f,
+                new ConfigDescription("Health % a newly placed ward starts with for 'Repair below'. Pieces are repaired only when their health is below it. " +
+                    "100 repairs any damage; lower values save fuel on wear from rain.", new AcceptableValueRange<float>(10f, 100f), admin));
+            RepairAlwaysRepair = cfg.Bind(section, "Always Repair", "piece_sharpstakes,piece_dvergr_sharpstakes",
+                new ConfigDescription("Piece prefab names repaired at any damage, ignoring each ward's 'Repair below' setting. Comma separated.", null, admin));
+        }
+
+        /// <summary>
+        /// Parses "Item:Amount,Item:Amount" (amounts must be positive whole numbers). Bad entries are logged and skipped.
+        /// </summary>
+        public static List<KeyValuePair<string, int>> ParseItemAmounts(ConfigEntry<string> entry)
+        {
+            var result = new List<KeyValuePair<string, int>>();
+            foreach (string raw in (entry.Value ?? "").Split(','))
+            {
+                string item = raw.Trim();
+                if (item.Length == 0)
+                    continue;
+
+                string[] parts = item.Split(':');
+                if (parts.Length != 2 || parts[0].Trim().Length == 0 || !int.TryParse(parts[1].Trim(), out int amount) || amount <= 0)
+                {
+                    Plugin.Log.LogWarning($"[{entry.Definition.Section}] {entry.Definition.Key}: ignoring invalid entry '{item}'. Expected Item:Amount.");
+                    continue;
+                }
+
+                result.Add(new KeyValuePair<string, int>(parts[0].Trim(), amount));
+            }
+            return result;
         }
 
         private static WardConfig BindWard(ConfigFile cfg, WardType type, string recipe, string station,

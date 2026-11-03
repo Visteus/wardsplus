@@ -8,6 +8,12 @@ namespace WardsPlus.Util
     {
         public static readonly int Enabled = "WP_Enabled".GetStableHashCode();
         public static readonly int Range = "WP_Range".GetStableHashCode();
+
+        // Repair Ward
+        /// <summary>Repairs left from the last fuel item consumed (int).</summary>
+        public static readonly int Charges = "WP_Charges".GetStableHashCode();
+        /// <summary>Only pieces below this health percentage (10-100) are repaired (float).</summary>
+        public static readonly int RepairBelow = "WP_RepairBelow".GetStableHashCode();
     }
 
     /// <summary>RPC names registered on every ward's ZNetView.</summary>
@@ -15,5 +21,7 @@ namespace WardsPlus.Util
     {
         public const string SetBool = "WP_SetBool";
         public const string SetFloat = "WP_SetFloat";
+        /// <summary>Broadcast by a Repair Ward so every nearby client plays the repaired piece's effect.</summary>
+        public const string RepairFx = "WP_RepairFx";
     }
 }

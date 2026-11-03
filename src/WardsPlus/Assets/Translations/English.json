@@ -12,5 +12,10 @@
   "wp_status_inactive": "Inactive",
   "wp_range": "Range",
   "wp_open": "Open",
-  "wp_panel_enabled": "Enabled"
+  "wp_panel_enabled": "Enabled",
+
+  "wp_repair_charges": "Charges",
+  "wp_repair_below": "Repair below",
+  "wp_repair_fuel": "Fuel",
+  "wp_repair_fuel_none": "none configured"
 }
