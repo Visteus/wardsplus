@@ -1,0 +1,16 @@
+{
+  "wp_ward_repair": "Repair Ward",
+  "wp_ward_repair_desc": "Uses fuel items from its inventory to repair damaged structures within range.",
+  "wp_ward_refuel": "Refuel Ward",
+  "wp_ward_refuel_desc": "Keeps nearby fires, sconces and smelters fueled from its inventory.",
+  "wp_ward_spawnproof": "Spawnproof Ward",
+  "wp_ward_spawnproof_desc": "Prevents creatures from spawning within its radius.",
+  "wp_ward_defender": "Defender Ward",
+  "wp_ward_defender_desc": "Insert a trophy. When enemies come near, it summons a friendly copy of that creature to defend your base.",
+
+  "wp_status_active": "Active",
+  "wp_status_inactive": "Inactive",
+  "wp_range": "Range",
+  "wp_open": "Open",
+  "wp_panel_enabled": "Enabled"
+}

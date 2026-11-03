@@ -21,17 +21,19 @@
     <RootNamespace>WardsPlus</RootNamespace>
   </PropertyGroup>
 
-  <!--
-    Extra game DLLs (from valheim_Data\Managed) beyond the defaults in Directory.Build.props:
-      <ItemGroup>
-        <ValheimReference Include="UnityEngine.TerrainModule" />
-      </ItemGroup>
+  <!-- Extra game DLLs beyond the defaults in Directory.Build.props (Jotunn's CustomPiece API exposes AssetBundle). -->
+  <ItemGroup>
+    <ValheimReference Include="UnityEngine.AssetBundleModule" />
+  </ItemGroup>
 
-    Library mods (e.g. Jotunn) installed in your Gale profile:
-      <ItemGroup>
-        <Reference Include="Jotunn" HintPath="$(BepInExPlugins)\ValheimModding-Jotunn\Jotunn.dll" Private="false" />
-      </ItemGroup>
-    See the README section "Using library mods".
-  -->
+  <!-- Library mods installed in the Gale profile. -->
+  <ItemGroup>
+    <Reference Include="Jotunn" HintPath="$(BepInExPlugins)\ValheimModding-Jotunn\Jotunn.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- Translation files are embedded so the mod ships as a single DLL. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Translations\*.json" LogicalName="WardsPlus.Translations.%(Filename)%(Extension)" />
+  </ItemGroup>
 
 </Project>
