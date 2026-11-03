@@ -69,6 +69,11 @@ namespace WardsPlus.Config
         public static ConfigEntry<float> RepairDefaultThreshold;
         public static ConfigEntry<string> RepairAlwaysRepair;
 
+        // ---- Refuel Ward ----
+        public static ConfigEntry<float> RefuelScanInterval;
+        public static ConfigEntry<string> RefuelDefaultDenied;
+        public static ConfigEntry<string> RefuelInputStations;
+
         public static void Bind(ConfigFile cfg)
         {
             ShowGlowOrb = cfg.Bind("General", "Show Glow Orb", false,
@@ -85,6 +90,7 @@ namespace WardsPlus.Config
             Wards[WardType.Refuel] = BindWard(cfg, WardType.Refuel,
                 recipe: "FineWood:10,Stone:10,Coal:25,SurtlingCore:1", station: "piece_workbench",
                 defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(1f, 0.5f, 0.1f));
+            BindRefuel(cfg, $"{WardType.Refuel} Ward");
 
             Wards[WardType.Spawnproof] = BindWard(cfg, WardType.Spawnproof,
                 recipe: "ElderBark:10,Stone:50,SurtlingCore:1", station: "piece_workbench",
@@ -113,6 +119,21 @@ namespace WardsPlus.Config
                     "100 repairs any damage; lower values save fuel on wear from rain.", new AcceptableValueRange<float>(10f, 100f), admin));
             RepairAlwaysRepair = cfg.Bind(section, "Always Repair", "piece_sharpstakes,piece_dvergr_sharpstakes",
                 new ConfigDescription("Piece prefab names repaired at any damage, ignoring each ward's 'Repair below' setting. Comma separated.", null, admin));
+        }
+
+        private static void BindRefuel(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            RefuelScanInterval = cfg.Bind(section, "Scan Interval", 30f,
+                new ConfigDescription("Seconds between top-ups of the fires and smelters in range (varies by ±20% so wards don't sync up).",
+                    new AcceptableValueRange<float>(5f, 600f), admin));
+            RefuelDefaultDenied = cfg.Bind(section, "Default Denied", "",
+                new ConfigDescription("Piece prefab names a newly placed ward starts with turned off (e.g. piece_bathtub,smelter). " +
+                    "Players can change it per ward in its panel. Comma separated.", null, admin));
+            RefuelInputStations = cfg.Bind(section, "Input Stations", "charcoal_kiln",
+                new ConfigDescription("Prefab names of stations with no fuel slot whose input the ward loads instead, like the charcoal kiln's wood. " +
+                    "Fires and smelter fuel are always handled; smelter ore never is. Comma separated.", null, admin));
         }
 
         /// <summary>

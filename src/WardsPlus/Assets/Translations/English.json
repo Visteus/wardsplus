@@ -17,5 +17,8 @@
   "wp_repair_charges": "Charges",
   "wp_repair_below": "Repair below",
   "wp_repair_fuel": "Fuel",
-  "wp_repair_fuel_none": "none configured"
+  "wp_repair_fuel_none": "none configured",
+
+  "wp_refuel_targets": "Refuel in range:",
+  "wp_refuel_none": "Nothing to refuel in range."
 }

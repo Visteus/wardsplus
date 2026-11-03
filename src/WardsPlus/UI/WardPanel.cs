@@ -178,11 +178,8 @@ namespace WardsPlus.UI
                 slider.Unbind();
             s_extraSliders.Clear();
 
-            if (!s_extras)
-                return;
             // Immediate, so the next ward's PopulatePanel/childCount never sees the old controls.
-            for (int i = s_extras.childCount - 1; i >= 0; i--)
-                Object.DestroyImmediate(s_extras.GetChild(i).gameObject);
+            ClearChildren(s_extras);
         }
 
         // ---------------------------------------------------------------- helpers for WardBase.PopulatePanel
@@ -198,6 +195,41 @@ namespace WardsPlus.UI
             s_extraSliders.Add(slider);
             if (s_ward)
                 slider.Bind(s_ward, min, max);
+        }
+
+        /// <summary>
+        /// Adds a "Label ........ [x]" row. <paramref name="label"/> is shown as-is (localize it first).
+        /// <paramref name="onChanged"/> only fires for player clicks; set the state with SetIsOnWithoutNotify.
+        /// </summary>
+        public static Toggle AddToggleRow(Transform parent, string label, bool isOn, Action<bool> onChanged)
+        {
+            Transform row = CreateRow(parent, 28f);
+            Text text = CreateLabel(row, label, GUIManager.Instance.AveriaSerifBold, 17, LabelColor, 28f);
+            text.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            Toggle toggle = CreateToggleControl(row);
+            toggle.SetIsOnWithoutNotify(isOn);
+            toggle.onValueChanged.AddListener(value => onChanged(value));
+            return toggle;
+        }
+
+        /// <summary>
+        /// Adds a group that grows with its rows up to <paramref name="maxRows"/> toggle rows tall, then scrolls.
+        /// Fill and rebuild its <see cref="ScrollGroup.Content"/> like a plain group.
+        /// </summary>
+        public static ScrollGroup AddScrollGroup(Transform parent, int maxRows)
+        {
+            const float rowHeight = 28f;
+            const float rowSpacing = 4f;
+            return ScrollGroup.Create(parent, maxRows * rowHeight + (maxRows - 1) * rowSpacing);
+        }
+
+        /// <summary>Removes a group's controls right away, so it can be refilled in the same frame.</summary>
+        public static void ClearChildren(Transform parent)
+        {
+            if (!parent)
+                return;
+            for (int i = parent.childCount - 1; i >= 0; i--)
+                Object.DestroyImmediate(parent.GetChild(i).gameObject);
         }
 
         /// <summary>Adds small wrapped text (hints, accepted items...). Its height follows the text.</summary>
@@ -256,12 +288,7 @@ namespace WardsPlus.UI
             Transform enabledRow = CreateRow(s_root.transform, 30f);
             Text enabledLabel = CreateLabel(enabledRow, Localization.instance.Localize("$wp_panel_enabled"), ui.AveriaSerifBold, 18, LabelColor, 30f);
             enabledLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
-            GameObject toggleGo = ui.CreateToggle(enabledRow, 28f, 28f);
-            Transform defaultLabel = toggleGo.transform.Find("Label");
-            if (defaultLabel)
-                Object.Destroy(defaultLabel.gameObject);
-            AddLayout(toggleGo, 28f, 28f);
-            s_enabled = toggleGo.GetComponent<Toggle>();
+            s_enabled = CreateToggleControl(enabledRow);
             s_enabled.onValueChanged.AddListener(OnEnabledChanged);
 
             // Range
@@ -399,6 +426,17 @@ namespace WardsPlus.UI
             var corners = new Vector3[4];
             rect.GetWorldCorners(corners); // 0 bottom-left, 1 top-left, 2 top-right, 3 bottom-right
             return space.InverseTransformPoint(corners[0]);
+        }
+
+        /// <summary>A Valheim-styled checkbox without Jotunn's built-in label, sized for a row.</summary>
+        private static Toggle CreateToggleControl(Transform row)
+        {
+            GameObject toggleGo = GUIManager.Instance.CreateToggle(row, 28f, 28f);
+            Transform defaultLabel = toggleGo.transform.Find("Label");
+            if (defaultLabel)
+                Object.DestroyImmediate(defaultLabel.gameObject);
+            AddLayout(toggleGo, 28f, 28f);
+            return toggleGo.GetComponent<Toggle>();
         }
 
         /// <summary>A "Label ..... value" header row with a whole-number Valheim-styled slider under it.</summary>
