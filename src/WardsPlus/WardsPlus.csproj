@@ -15,7 +15,7 @@
     -->
     <ModGuid>visteus.wardsplus</ModGuid>
     <!-- The ONLY place to bump the version. Plain Major.Minor.Patch. -->
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
 
     <AssemblyName>$(ModName)</AssemblyName>
     <RootNamespace>WardsPlus</RootNamespace>
