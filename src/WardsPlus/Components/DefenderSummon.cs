@@ -87,38 +87,44 @@ namespace WardsPlus.Components
             if (m_ai && (m_ai.HaveTarget() || m_ai.IsAlerted()))
                 m_lastBusyTime = Time.time;
 
-            if (ShouldLeave())
-                Despawn();
+            string reason = LeaveReason();
+            if (reason != null)
+                Despawn(reason);
         }
 
-        private bool ShouldLeave()
+        /// <summary>Why the summon should leave now, or null to stay.</summary>
+        private string LeaveReason()
         {
             if (Time.time - m_lastBusyTime > PluginConfig.DefenderIdleDespawn.Value)
-                return true;
+                return "idle";
 
             ZDO ward = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(m_ward) : null;
             if (ward == null)
             {
                 if (m_wardMissingSince < 0f)
                     m_wardMissingSince = Time.time;
-                return Time.time - m_wardMissingSince > MissingWardGrace;
+                return Time.time - m_wardMissingSince > MissingWardGrace ? "ward missing" : null;
             }
             m_wardMissingSince = -1f;
 
             // The ward hands out one summon at a time and forgets it when it no longer wants it.
-            if (!ward.GetBool(ZdoKeys.Enabled, true) || ward.GetZDOID(ZdoKeys.Summon) != m_nview.GetZDO().m_uid)
-                return true;
+            if (!ward.GetBool(ZdoKeys.Enabled, true))
+                return "ward disabled";
+            if (ward.GetZDOID(ZdoKeys.Summon) != m_nview.GetZDO().m_uid)
+                return "ward replaced or dropped it";
 
             WardConfig config = PluginConfig.For(WardType.Defender);
             float range = config.ClampRange(ward.GetFloat(ZdoKeys.Range, config.DefaultRange.Value));
             Vector3 offset = transform.position - ward.GetPosition();
             offset.y = 0f;
             float leash = range + LeashSlack;
-            return offset.sqrMagnitude > leash * leash;
+            return offset.sqrMagnitude > leash * leash ? "strayed too far" : null;
         }
 
-        private void Despawn()
+        private void Despawn(string reason)
         {
+            if (DebugLog.Enabled)
+                DebugLog.Write($"{DebugLog.Name(Utils.GetPrefabName(gameObject), m_nview)}: summon leaving ({reason}).");
             CancelInvoke(nameof(Check));
             DefenderWard.PlaySummonEffect(m_ward, transform.position);
             ZNetScene.instance.Destroy(gameObject);

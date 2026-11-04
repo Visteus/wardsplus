@@ -57,6 +57,12 @@ namespace WardsPlus.Components
 
         public bool IsValid => m_nview != null && m_nview.IsValid();
 
+        /// <summary>True while this ward's own tick is running (its own changes, not a player's).</summary>
+        protected bool InTick => m_inTick;
+
+        /// <summary>"Gathering Ward 12345:67", for debug log lines.</summary>
+        protected string LogName => DebugLog.Name($"{Type} Ward", m_nview);
+
         // ---------------------------------------------------------------- lifecycle
 
         protected virtual void Awake()
@@ -82,7 +88,10 @@ namespace WardsPlus.Components
             s_all.Add(this);
             InvokeRepeating(nameof(UpdateVisuals), 0f, 1f);
             // Random first offset spreads out wards that all load at the same moment.
-            ScheduleTick(Random.Range(0f, IdleInterval));
+            float firstTick = Random.Range(0f, IdleInterval);
+            ScheduleTick(firstTick);
+            if (DebugLog.Enabled)
+                DebugLog.Write($"{LogName} loaded ({(m_nview.IsOwner() ? "owned here" : "owned by another player")}, {(IsEnabled() ? "enabled" : "disabled")}, range {GetRange():0}m, first tick in {firstTick:0.0}s).");
         }
 
         /// <summary>
@@ -137,6 +146,7 @@ namespace WardsPlus.Components
             if (!m_nview.IsOwner())
                 return;
             m_nview.GetZDO().Set(key, value);
+            DebugLog.Write($"{LogName}: {DebugLog.KeyName(key)} set to {value} (by peer {sender}).");
             UpdateVisuals();
             RequestTickSoon(SettingChangedTickDelay);
         }
@@ -145,7 +155,9 @@ namespace WardsPlus.Components
         {
             if (!m_nview.IsOwner())
                 return;
-            m_nview.GetZDO().Set(key, ClampSetting(key, value));
+            float clamped = ClampSetting(key, value);
+            m_nview.GetZDO().Set(key, clamped);
+            DebugLog.Write($"{LogName}: {DebugLog.KeyName(key)} set to {clamped:0.##} (by peer {sender}).");
             UpdateVisuals();
             RequestTickSoon(SettingChangedTickDelay);
         }
@@ -176,6 +188,8 @@ namespace WardsPlus.Components
         {
             if (m_inTick || !isActiveAndEnabled || Time.time + delay >= m_nextTickTime)
                 return;
+            if (DebugLog.Enabled)
+                DebugLog.Write($"{LogName}: next tick brought forward to {delay:0.0}s.");
             ScheduleTick(delay);
         }
 
@@ -202,6 +216,8 @@ namespace WardsPlus.Components
                     {
                         m_inTick = false;
                     }
+                    if (DebugLog.Enabled)
+                        DebugLog.Write($"{LogName}: ticked, next in {delay:0.0}s.");
                 }
                 m_nextTickTime = Time.time + delay;
                 yield return new WaitForSeconds(delay);

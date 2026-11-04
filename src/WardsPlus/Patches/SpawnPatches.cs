@@ -1,6 +1,7 @@
 using HarmonyLib;
 using UnityEngine;
 using WardsPlus.Components;
+using WardsPlus.Util;
 
 namespace WardsPlus.Patches
 {
@@ -20,7 +21,15 @@ namespace WardsPlus.Patches
         private static void IsSpawnPointGood(SpawnSystem.SpawnData spawn, ref Vector3 spawnPoint, ref bool __result)
         {
             if (__result && !spawn.m_insidePlayerBase && SpawnproofWard.IsProtected(spawnPoint))
+            {
                 __result = false;
+                if (DebugLog.Enabled)
+                {
+                    string creature = spawn.m_prefab ? spawn.m_prefab.name : "?";
+                    DebugLog.WriteThrottled("spawn:" + creature, 10f,
+                        $"Spawnproof: blocked a world/raid spawn of {creature} at {spawnPoint:F0} (repeats hidden for 10s).");
+                }
+            }
         }
 
         /// <summary>
@@ -29,7 +38,17 @@ namespace WardsPlus.Patches
         /// </summary>
         [HarmonyPrefix]
         [HarmonyPatch(typeof(CreatureSpawner), nameof(CreatureSpawner.UpdateSpawner))]
-        private static bool UpdateSpawner(CreatureSpawner __instance) =>
-            __instance.m_spawnInPlayerBase || !SpawnproofWard.IsProtected(__instance.transform.position);
+        private static bool UpdateSpawner(CreatureSpawner __instance)
+        {
+            if (__instance.m_spawnInPlayerBase || !SpawnproofWard.IsProtected(__instance.transform.position))
+                return true;
+            if (DebugLog.Enabled)
+            {
+                string creature = __instance.m_creaturePrefab ? __instance.m_creaturePrefab.name : "?";
+                DebugLog.WriteThrottled("spawner:" + __instance.GetInstanceID(), 60f,
+                    $"Spawnproof: holding back a {creature} spawn point at {__instance.transform.position:F0} (repeats hidden for 60s).");
+            }
+            return false;
+        }
     }
 }

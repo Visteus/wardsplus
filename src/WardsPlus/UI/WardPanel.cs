@@ -206,10 +206,64 @@ namespace WardsPlus.UI
             Transform row = CreateRow(parent, 28f);
             Text text = CreateLabel(row, label, GUIManager.Instance.AveriaSerifBold, 17, LabelColor, 28f);
             text.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            // Long names shrink to stay on one line instead of wrapping onto a hidden second line. The minimum
+            // is too big for two lines to fit the row, so best fit never wraps.
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMaxSize = 17;
+            text.resizeTextMinSize = 13;
             Toggle toggle = CreateToggleControl(row);
             toggle.SetIsOnWithoutNotify(isOn);
             toggle.onValueChanged.AddListener(value => onChanged(value));
             return toggle;
+        }
+
+        /// <summary>
+        /// Adds a tight "▲▼" pair to a row (e.g. one from <see cref="AddToggleRow"/>) and returns the pair's
+        /// transform, for placing it within the row. Arrows tint like the panel's text: grey, orange when
+        /// hovered or selected (mouse or gamepad), dimmed when unavailable.
+        /// </summary>
+        public static Transform AddArrowButtons(Transform row, Action onUp, Action onDown, out Button up, out Button down)
+        {
+            var pair = new GameObject("Arrows", typeof(RectTransform));
+            pair.transform.SetParent(row, false);
+            var layout = pair.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 0f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            AddLayout(pair, 36f, 28f);
+            up = AddArrowButton(pair.transform, true, onUp);
+            down = AddArrowButton(pair.transform, false, onDown);
+            return pair.transform;
+        }
+
+        private static Button AddArrowButton(Transform parent, bool up, Action onClick)
+        {
+            GUIManager ui = GUIManager.Instance;
+            var go = new GameObject(up ? "MoveUp" : "MoveDown", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var arrow = go.AddComponent<ArrowGraphic>();
+            arrow.PointsUp = up;
+            arrow.color = Color.white; // Tinted by the button's color block.
+
+            var button = go.AddComponent<Button>();
+            button.targetGraphic = arrow;
+            ColorBlock colors = button.colors;
+            colors.normalColor = LabelColor;
+            colors.highlightedColor = ui.ValheimOrange;
+            colors.selectedColor = ui.ValheimOrange;
+            colors.pressedColor = ui.ValheimYellow;
+            colors.disabledColor = new Color(0.4f, 0.4f, 0.4f, 0.4f);
+            colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0.05f;
+            button.colors = colors;
+            button.onClick.AddListener(() => onClick());
+            AddLayout(go, 18f, 28f);
+            return button;
         }
 
         /// <summary>

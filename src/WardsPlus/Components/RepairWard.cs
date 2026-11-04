@@ -121,10 +121,19 @@ namespace WardsPlus.Components
 
             // Repair() sends the vanilla repair RPC to the piece's owner. It refuses if the piece was
             // repaired on this client less than a second ago; then no charge is spent.
-            if (target.Repair())
+            bool repaired = target.Repair();
+            if (repaired)
             {
                 SetCharges(GetCharges() - 1);
                 m_nview.InvokeRPC(ZNetView.Everybody, WardRpcs.RepairFx, id);
+            }
+            if (DebugLog.Enabled)
+            {
+                ZDO pieceZdo = target.m_nview.GetZDO();
+                float health = pieceZdo.GetFloat(ZDOVars.s_health, target.m_health);
+                DebugLog.Write(repaired
+                    ? $"{LogName}: repaired {DebugLog.Name(Utils.GetPrefabName(target.gameObject), target.m_nview)} {DebugLog.Distance(target.transform.position, transform.position)} away (was {health / target.m_health:P0}), {GetCharges()} charge(s) left."
+                    : $"{LogName}: {Utils.GetPrefabName(target.gameObject)} refused the repair (repaired here under a second ago), no charge spent.");
             }
             return ActiveInterval;
         }
@@ -190,6 +199,7 @@ namespace WardsPlus.Components
                     if (!inventory.RemoveOneItem(item))
                         return false;
                     SetCharges(fuel.Charges);
+                    DebugLog.Write($"{LogName}: burned 1 {fuel.SharedName} for {fuel.Charges} repair charge(s).");
                     return true;
                 }
             }

@@ -21,8 +21,10 @@ namespace WardsPlus.Components
     /// <see cref="Version"/> changes on every add/remove, so open panels only rescan when something changed.
     ///
     /// Never tracked (by component, so mods are covered too): carts and ships (anything with a Vagon or Ship
-    /// above it), tombstones, and WardsPlus wards' own inventories. Whether a container is player-built,
-    /// public, in range, or allowed by wards is checked live by the ward, because those can change.
+    /// above it) and tombstones. Other WardsPlus wards are tracked (a Repair Ward can be fed resin), but
+    /// Gathering Wards are flagged so they never deposit into each other (two of them would pass the same item
+    /// back and forth). Whether a container is player-built, public, in range, or allowed by wards is checked
+    /// live by the ward, because those can change.
     /// </summary>
     internal static class ContainerRegistry
     {
@@ -32,6 +34,8 @@ namespace WardsPlus.Components
             public ZNetView View;
             public Piece Piece;
             public string Prefab;
+            /// <summary>A Gathering Ward's own inventory: never a deposit target for another Gathering Ward.</summary>
+            public bool IsGatheringWard;
 
             /// <summary>Localized display name: the piece's, falling back to the container's own.</summary>
             public string DisplayName
@@ -95,6 +99,7 @@ namespace WardsPlus.Components
                 View = view,
                 Piece = piece,
                 Prefab = Utils.GetPrefabName(view.gameObject),
+                IsGatheringWard = container.GetComponentInParent<GatheringWard>(),
             };
             s_entries.Add(entry);
             Version++;
@@ -125,13 +130,12 @@ namespace WardsPlus.Components
             Version++;
         }
 
-        /// <summary>Carts, ships, tombstones and our own wards: never deposit targets, so not tracked at all.</summary>
+        /// <summary>Carts, ships and tombstones: never deposit targets, so not tracked at all.</summary>
         private static bool IsExcluded(Container container) =>
             container.m_wagon
             || container.GetComponentInParent<Vagon>()
             || container.GetComponentInParent<Ship>()
-            || container.GetComponentInParent<TombStone>()
-            || container.GetComponentInParent<WardBase>();
+            || container.GetComponentInParent<TombStone>();
 
         private static void RemoveAt(int index)
         {
@@ -259,6 +263,8 @@ namespace WardsPlus.Components
                     Plugin.Log.LogWarning($"Gathering: depositing {item.m_stack} {item.m_shared.m_name} into {entry.Prefab} failed, returning it. {e.Message}");
                 }
                 int left = item.m_stack - added;
+                if (DebugLog.Enabled)
+                    DebugLog.Write($"{DebugLog.Name(entry.Prefab, entry.View)}: took {added} of {item.m_stack} {item.m_shared.m_name} from a Gathering Ward (peer {sender}){(left > 0 ? $", returning {left}" : "")}.");
                 if (left > 0)
                 {
                     ItemDrop.ItemData back = item.Clone();

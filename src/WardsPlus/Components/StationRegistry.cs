@@ -308,6 +308,8 @@ namespace WardsPlus.Components
             {
                 Plugin.Log.LogWarning($"Refuel: adding {count} {item} to {station.Prefab} failed, returning it to the ward. {e.Message}");
             }
+            if (DebugLog.Enabled)
+                DebugLog.Write($"{DebugLog.Name(station.Prefab, station.View)}: took {applied} of {count} {item} as fuel from a Refuel Ward (peer {sender}).");
             RefundRest(sender, ward, item, count, applied);
         }
 
@@ -322,6 +324,8 @@ namespace WardsPlus.Components
             {
                 Plugin.Log.LogWarning($"Refuel: loading {count} {item} into {station.Prefab} failed, returning it to the ward. {e.Message}");
             }
+            if (DebugLog.Enabled)
+                DebugLog.Write($"{DebugLog.Name(station.Prefab, station.View)}: loaded {applied} of {count} {item} from a Refuel Ward (peer {sender}).");
             RefundRest(sender, ward, item, count, applied);
         }
 

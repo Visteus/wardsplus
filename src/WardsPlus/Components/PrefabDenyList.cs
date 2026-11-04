@@ -109,6 +109,7 @@ namespace WardsPlus.Components
             if (!changed)
                 return;
             m_nview.GetZDO().Set(m_key, NameLists.Join(names));
+            DebugLog.Write($"{DebugLog.Name("Ward", m_nview)}: {prefab} turned {(denied ? "off" : "on")} (by peer {sender}).");
             if (!denied)
                 m_onAllowed?.Invoke();
         }

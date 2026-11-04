@@ -121,6 +121,7 @@ namespace WardsPlus.Components
             if (!m_nview.IsOwner())
                 return;
             m_nview.GetZDO().Set(ZdoKeys.Creature, prefab ?? "");
+            DebugLog.Write($"{LogName}: creature set to {(string.IsNullOrEmpty(prefab) ? "best fit" : prefab)} (by peer {sender}).");
             RequestTickSoon(TrophyChangedTickDelay);
         }
 
@@ -143,6 +144,7 @@ namespace WardsPlus.Components
                 bool keep = summon != null && prefab && summon.GetPrefab() == prefab.name.GetStableHashCode();
                 if (keep)
                     return delay;
+                DebugLog.Write($"{LogName}: dropping its summon {summonId} ({(summon == null ? "gone" : "no longer the chosen creature")}).");
                 zdo.Set(ZdoKeys.Summon, ZDOID.None); // The old summon sees this and leaves.
             }
 
@@ -151,7 +153,11 @@ namespace WardsPlus.Components
 
             Character enemy = FindEnemy();
             if (enemy)
+            {
+                if (DebugLog.Enabled)
+                    DebugLog.Write($"{LogName}: {Utils.GetPrefabName(enemy.gameObject)} {DebugLog.Distance(enemy.transform.position, transform.position)} away, summoning {prefab.name} (level {Mathf.Clamp(PluginConfig.DefenderSummonLevel.Value, 1, 3)}).");
                 Summon(prefab, enemy);
+            }
             return delay;
         }
 

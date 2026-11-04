@@ -64,6 +64,9 @@ namespace WardsPlus.Config
         /// <summary>Whether the ward settings panel keeps the position the player dragged it to.</summary>
         public static ConfigEntry<bool> RememberPanelPosition;
 
+        /// <summary>Writes "[debug]" lines for ward events (ticks, pickups, deliveries, summons...) to the log.</summary>
+        public static ConfigEntry<bool> DebugLogging;
+
         // ---- Repair Ward ----
         /// <summary>"Item:Repairs" pairs: which items the Repair Ward burns and how many repairs each gives.</summary>
         public static ConfigEntry<string> RepairFuel;
@@ -101,6 +104,9 @@ namespace WardsPlus.Config
 
             RememberPanelPosition = cfg.Bind("General", "Remember Panel Position", false,
                 "Keep the ward settings panel where you last dragged it. When off, it always opens at its default spot, and turning this off clears the remembered position. Client-side, does NOT require a reload.");
+
+            DebugLogging = cfg.Bind("General", "Debug Logging", false,
+                "Write diagnostic \"[debug]\" lines to the BepInEx log for ward events: ticks, settings changes, pickups, deposits, refuels, repairs, summons, blocked spawns and refunds. Meant for testing and bug reports; it can be chatty. Only logs what happens on this machine (each ward runs on one player's game). Client-side, does NOT require a reload.");
 
             Wards[WardType.Repair] = BindWard(cfg, WardType.Repair,
                 recipe: "RoundLog:10,Stone:10,GreydwarfEye:50", station: "piece_workbench",

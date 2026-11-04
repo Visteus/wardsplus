@@ -22,6 +22,7 @@ Settings are **admin-only and synced from the server**, so on a dedicated server
 |---|---|---|
 | Show Glow Orb | `false` | *(client)* Show the vanilla ward's spherical glow above active wards. When off, only the colored magic lines glow. Requires a reload. |
 | Remember Panel Position | `false` | *(client)* Keep the ward settings panel where you last dragged it. When off, it always opens at its default spot, and turning this off clears the remembered position. Takes effect immediately. |
+| Debug Logging | `false` | *(client)* Write `[debug]` lines to the BepInEx log for ward events (ticks, settings changes, pickups, deposits, refuels, repairs, summons, blocked spawns, refunds). For testing and bug reports. Only logs what runs on this machine. Takes effect immediately. |
 
 ### Ward settings
 Each ward has its own config section (`[Repair Ward]`, `[Refuel Ward]`, `[Spawnproof Ward]`, `[Defender Ward]`). The first rows of each table below are the settings every ward has; ranges are in meters.

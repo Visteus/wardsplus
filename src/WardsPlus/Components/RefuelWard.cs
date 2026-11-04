@@ -9,8 +9,8 @@ namespace WardsPlus.Components
     /// <summary>
     /// Keeps the fires, braziers, sconces, torches, smelters, ovens, shield generators and kilns in range
     /// supplied from its inventory.
-    /// - Every Scan Interval (jittered), or ~1s after items are added, each allowed station in range (nearest
-    ///   first) gets everything it has room for in one delivery: fuel first (fires, smelter/furnace/refinery,
+    /// - Every Scan Interval (jittered), or ~1s after items are added, each allowed station in range (in the
+    ///   panel's priority order, nearest first within it) gets everything it has room for in one delivery: fuel first (fires, smelter/furnace/refinery,
     ///   oven, shield generator), then the input of "input stations" (the charcoal kiln's wood) from what's left.
     ///   Smelter ore is never loaded.
     /// - A delivery takes the items out in one go and sends one RPC; the station's owner clamps it to the
@@ -44,6 +44,9 @@ namespace WardsPlus.Components
         /// <summary>Station prefab types this ward won't refuel (ZDO keys kept from before the shared helper).</summary>
         private readonly PrefabDenyList m_denyList = new PrefabDenyList(ZdoKeys.Denied, ZdoKeys.DeniedInit, WardRpcs.SetDenied);
 
+        /// <summary>Station types to supply first (set with the panel's arrows); nearest first within a type.</summary>
+        private readonly PrefabPriorityList m_priority = new PrefabPriorityList(ZdoKeys.Order, WardRpcs.MoveType);
+
         private static readonly HashSet<string> s_inputStations = new HashSet<string>();
         private static string s_inputStationsSource;
 
@@ -64,6 +67,7 @@ namespace WardsPlus.Components
                 return;
             // A type turned back on: fuel it soon.
             m_denyList.Register(m_nview, () => RequestTickSoon(FuelAddedTickDelay));
+            m_priority.Register(m_nview);
             m_nview.Register<string, int>(WardRpcs.Refund, RPC_Refund);
         }
 
@@ -106,7 +110,8 @@ namespace WardsPlus.Components
                 return NextIdleDelay(IdleInterval);
 
             CollectTargets(m_targets);
-            m_targets.Sort((a, b) => a.SqrDistance.CompareTo(b.SqrDistance));
+            // Priority order from the panel first, then nearest first (all unmoved types count as equal).
+            m_targets.Sort((a, b) => m_priority.Compare(a.Station.Prefab, a.SqrDistance, b.Station.Prefab, b.SqrDistance));
 
             // Fuel first, so a kiln can't eat the wood the fires need; inputs get whatever is left.
             foreach (Target target in m_targets)
@@ -178,6 +183,8 @@ namespace WardsPlus.Components
             inventory.RemoveItem(sharedName, count);
             try
             {
+                if (DebugLog.Enabled)
+                    DebugLog.Write($"{LogName}: sending {count} {itemPrefab} to {DebugLog.Name(target.Station.Prefab, target.Station.View)} {Mathf.Sqrt(target.SqrDistance):0.0}m away ({(target.IsInput ? "input" : "fuel")}, room {target.Room}).");
                 target.Station.View.InvokeRPC(rpc, m_nview.GetZDO().m_uid, itemPrefab, count);
             }
             catch (System.Exception e)
@@ -200,6 +207,7 @@ namespace WardsPlus.Components
                 m_nview.InvokeRPC(WardRpcs.Refund, itemPrefab, count);
                 return;
             }
+            DebugLog.Write($"{LogName}: a station sent back {count} {itemPrefab} (by peer {sender}).");
             ReturnItems(itemPrefab, count);
         }
 
@@ -303,7 +311,7 @@ namespace WardsPlus.Components
         {
             WardPanel.AddNote(extras, Localization.instance.Localize("$wp_refuel_targets"));
             // Long lists (many station types in range) scroll instead of stretching the panel down the screen.
-            m_typeList = new TypeToggleList(extras, m_denyList, "$wp_refuel_none", PanelListMaxRows);
+            m_typeList = new TypeToggleList(extras, m_denyList, "$wp_refuel_none", PanelListMaxRows, m_priority);
             RebuildTypeList();
         }
 

@@ -22,6 +22,8 @@ namespace WardsPlus.Util
         public static readonly int Denied = "WP_Deny".GetStableHashCode();
         /// <summary>Set once the config's default deny list has been stamped onto this ward (bool).</summary>
         public static readonly int DeniedInit = "WP_DenyInit".GetStableHashCode();
+        /// <summary>Station prefab types in priority order, highest first; unlisted types come after (string).</summary>
+        public static readonly int Order = "WP_Order".GetStableHashCode();
 
         // Defender Ward
         /// <summary>Creature prefab the player picked for the current trophy (string). Empty: the best fit.</summary>
@@ -40,6 +42,8 @@ namespace WardsPlus.Util
         public static readonly int DepositDenied = "WP_DepositDeny".GetStableHashCode();
         /// <summary>Set once the config's default container deny list has been stamped onto this ward (bool).</summary>
         public static readonly int DepositDeniedInit = "WP_DepositDenyInit".GetStableHashCode();
+        /// <summary>Container prefab types in deposit priority order, highest first; unlisted types come after (string).</summary>
+        public static readonly int DepositOrder = "WP_DepositOrder".GetStableHashCode();
         /// <summary>On a dropped item: a player dropped it, so Gathering Wards leave it alone (bool).</summary>
         public static readonly int PlayerDropped = "WP_PlayerDropped".GetStableHashCode();
     }
@@ -53,6 +57,8 @@ namespace WardsPlus.Util
         public const string RepairFx = "WP_RepairFx";
         /// <summary>Asks a Refuel Ward's owner to deny or allow one prefab type.</summary>
         public const string SetDenied = "WP_SetDenied";
+        /// <summary>Asks a Refuel Ward's owner to move one station type above another in its priority order.</summary>
+        public const string MoveType = "WP_MoveType";
         /// <summary>On a fire/smelter: (ward, fuel item prefab, count). Applied by the station's owner.</summary>
         public const string StationFuel = "WP_StationFuel";
         /// <summary>On a kiln-type station: (ward, input item prefab, count). Applied by the station's owner.</summary>
@@ -65,6 +71,8 @@ namespace WardsPlus.Util
         public const string SummonFx = "WP_SummonFx";
         /// <summary>Asks a Gathering Ward's owner to deny or allow one container prefab type.</summary>
         public const string SetDepositDenied = "WP_SetDepositDenied";
+        /// <summary>Asks a Gathering Ward's owner to move one container type above another in its deposit order.</summary>
+        public const string MoveDepositType = "WP_MoveDepositType";
         /// <summary>On a container: (ward, packed items) to add onto matching stacks. Applied by the container's owner.</summary>
         public const string ContainerDeposit = "WP_ContainerDeposit";
         /// <summary>On a Gathering Ward: (packed items) a container couldn't take, put back in the ward's inventory.</summary>
