@@ -74,6 +74,14 @@ namespace WardsPlus.Config
         public static ConfigEntry<string> RefuelDefaultDenied;
         public static ConfigEntry<string> RefuelInputStations;
 
+        // ---- Defender Ward ----
+        public static ConfigEntry<float> DefenderScanInterval;
+        public static ConfigEntry<int> DefenderSummonLevel;
+        public static ConfigEntry<float> DefenderSummonCooldown;
+        public static ConfigEntry<float> DefenderIdleDespawn;
+        public static ConfigEntry<string> DefenderDeniedCreatures;
+        public static ConfigEntry<string> DefenderTrophyOverrides;
+
         public static void Bind(ConfigFile cfg)
         {
             ShowGlowOrb = cfg.Bind("General", "Show Glow Orb", false,
@@ -99,6 +107,30 @@ namespace WardsPlus.Config
             Wards[WardType.Defender] = BindWard(cfg, WardType.Defender,
                 recipe: "YggdrasilWood:10,BlackMarble:10,BlackCore:1,DragonTear:5", station: "forge",
                 defaultRange: 20f, minRange: 5f, maxRange: 20f, color: new Color(0.7f, 0.3f, 1f));
+            BindDefender(cfg, $"{WardType.Defender} Ward");
+        }
+
+        private static void BindDefender(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            DefenderScanInterval = cfg.Bind(section, "Scan Interval", 2f,
+                new ConfigDescription("Seconds between checks for enemies in range (varies by ±20% so wards don't sync up).",
+                    new AcceptableValueRange<float>(1f, 30f), admin));
+            DefenderSummonLevel = cfg.Bind(section, "Summon Level", 1,
+                new ConfigDescription("Level of the summoned defender: 1 is a normal creature, 2 is one star, 3 is two stars.",
+                    new AcceptableValueRange<int>(1, 3), admin));
+            DefenderSummonCooldown = cfg.Bind(section, "Summon Cooldown", 30f,
+                new ConfigDescription("Minimum seconds between two summons from the same ward, so a defender that dies isn't replaced instantly.",
+                    new AcceptableValueRange<float>(0f, 600f), admin));
+            DefenderIdleDespawn = cfg.Bind(section, "Idle Despawn", 10f,
+                new ConfigDescription("Seconds a defender stays once it has nothing left to fight.",
+                    new AcceptableValueRange<float>(3f, 120f), admin));
+            DefenderDeniedCreatures = cfg.Bind(section, "Denied Creatures", "",
+                new ConfigDescription("Creature prefab names that can never be summoned (e.g. Wolf,Lox). Bosses and water-only creatures never are. Comma separated.", null, admin));
+            DefenderTrophyOverrides = cfg.Bind(section, "Trophy Overrides", "",
+                new ConfigDescription("Trophy:Creature pairs (prefab names) that make a trophy summon that creature by default, " +
+                    "e.g. TrophyDraugr:Draugr_Ranged. Also lets a trophy summon a creature that doesn't drop it. Comma separated.", null, admin));
         }
 
         private static void BindRepair(ConfigFile cfg, string section)

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace WardsPlus.Util
 {
     /// <summary>
@@ -20,6 +22,16 @@ namespace WardsPlus.Util
         public static readonly int Denied = "WP_Deny".GetStableHashCode();
         /// <summary>Set once the config's default deny list has been stamped onto this ward (bool).</summary>
         public static readonly int DeniedInit = "WP_DenyInit".GetStableHashCode();
+
+        // Defender Ward
+        /// <summary>Creature prefab the player picked for the current trophy (string). Empty: the best fit.</summary>
+        public static readonly int Creature = "WP_Creature".GetStableHashCode();
+        /// <summary>On the ward: the summon it currently has out (ZDOID). None when it has none.</summary>
+        public static readonly KeyValuePair<int, int> Summon = ZDO.GetHashZDOID("WP_Summon");
+        /// <summary>On the ward: ZNet time (ticks) of its last summon, for the cooldown (long).</summary>
+        public static readonly int SummonTime = "WP_SummonTime".GetStableHashCode();
+        /// <summary>On a summoned creature: the ward that summoned it (ZDOID). Marks it as a defender on every client.</summary>
+        public static readonly KeyValuePair<int, int> SummonOf = ZDO.GetHashZDOID("WP_SummonOf");
     }
 
     /// <summary>RPC names registered on every ward's ZNetView.</summary>
@@ -37,5 +49,9 @@ namespace WardsPlus.Util
         public const string StationInput = "WP_StationInput";
         /// <summary>On a Refuel Ward: (item prefab, count) a station couldn't use, put back in the ward's inventory.</summary>
         public const string Refund = "WP_Refund";
+        /// <summary>Asks a Defender Ward's owner to summon a different creature for its trophy (prefab name).</summary>
+        public const string SetCreature = "WP_SetCreature";
+        /// <summary>Broadcast by a Defender Ward: (position) play the summon "poof" there, on every client.</summary>
+        public const string SummonFx = "WP_SummonFx";
     }
 }

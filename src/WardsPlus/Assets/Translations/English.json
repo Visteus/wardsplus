@@ -20,5 +20,10 @@
   "wp_repair_fuel_none": "none configured",
 
   "wp_refuel_targets": "Refuel in range:",
-  "wp_refuel_none": "Nothing to refuel in range."
+  "wp_refuel_none": "Nothing to refuel in range.",
+
+  "wp_defender_summons": "Summons",
+  "wp_defender_no_trophy": "No trophy",
+  "wp_defender_insert_trophy": "Insert a creature's trophy to choose the defender.",
+  "wp_defender_trophy_only": "Only a trophy of a creature that can be summoned fits here."
 }
