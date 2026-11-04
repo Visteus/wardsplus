@@ -313,16 +313,6 @@ namespace WardsPlus.Components
             return common;
         }
 
-        private static HashSet<string> ParseNameSet(string source)
-        {
-            var set = new HashSet<string>();
-            foreach (string raw in source.Split(','))
-            {
-                string name = raw.Trim();
-                if (name.Length > 0)
-                    set.Add(name);
-            }
-            return set;
-        }
+        private static HashSet<string> ParseNameSet(string source) => new HashSet<string>(Util.NameLists.Parse(source));
     }
 }

@@ -1,7 +1,5 @@
 using System.Collections.Generic;
-using System.Text;
 using UnityEngine;
-using UnityEngine.UI;
 using WardsPlus.Config;
 using WardsPlus.UI;
 using WardsPlus.Util;
@@ -42,16 +40,15 @@ namespace WardsPlus.Components
         }
 
         private readonly List<Target> m_targets = new List<Target>();
-        private readonly HashSet<string> m_denied = new HashSet<string>();
-        private string m_deniedSource;
+
+        /// <summary>Station prefab types this ward won't refuel (ZDO keys kept from before the shared helper).</summary>
+        private readonly PrefabDenyList m_denyList = new PrefabDenyList(ZdoKeys.Denied, ZdoKeys.DeniedInit, WardRpcs.SetDenied);
 
         private static readonly HashSet<string> s_inputStations = new HashSet<string>();
         private static string s_inputStationsSource;
 
         // Panel state while this ward's panel is open (controls are destroyed when it closes).
-        private RectTransform m_typeList;
-        private readonly Dictionary<string, Toggle> m_typeToggles = new Dictionary<string, Toggle>();
-        private string m_typeListSignature;
+        private TypeToggleList m_typeList;
         // What the list was last built from; any change triggers a rescan.
         private int m_listVersion = -1;
         private float m_listRange = -1f;
@@ -65,7 +62,8 @@ namespace WardsPlus.Components
             base.Awake();
             if (!IsValid)
                 return;
-            m_nview.Register<string, bool>(WardRpcs.SetDenied, RPC_SetDenied);
+            // A type turned back on: fuel it soon.
+            m_denyList.Register(m_nview, () => RequestTickSoon(FuelAddedTickDelay));
             m_nview.Register<string, int>(WardRpcs.Refund, RPC_Refund);
         }
 
@@ -80,11 +78,7 @@ namespace WardsPlus.Components
         protected override void InitDefaults(ZDO zdo)
         {
             base.InitDefaults(zdo);
-            if (!zdo.GetBool(ZdoKeys.DeniedInit))
-            {
-                zdo.Set(ZdoKeys.Denied, JoinNames(ParseNames(PluginConfig.RefuelDefaultDenied.Value)));
-                zdo.Set(ZdoKeys.DeniedInit, true);
-            }
+            m_denyList.InitDefaults(zdo, PluginConfig.RefuelDefaultDenied.Value);
         }
 
         private Inventory GetInventory() => m_container ? m_container.GetInventory() : null;
@@ -98,58 +92,10 @@ namespace WardsPlus.Components
 
         // ---------------------------------------------------------------- deny list (ZDO-backed)
 
-        public bool IsDenied(string prefab)
-        {
-            string source = IsValid ? m_nview.GetZDO().GetString(ZdoKeys.Denied) : "";
-            if (source != m_deniedSource)
-            {
-                m_deniedSource = source;
-                m_denied.Clear();
-                m_denied.UnionWith(ParseNames(source));
-            }
-            return m_denied.Contains(prefab);
-        }
+        public bool IsDenied(string prefab) => m_denyList.IsDenied(prefab);
 
         /// <summary>Asks the owner to deny or allow one prefab type. Safe to call from any client.</summary>
-        public void RequestSetDenied(string prefab, bool denied)
-        {
-            if (IsValid)
-                m_nview.InvokeRPC(WardRpcs.SetDenied, prefab, denied);
-        }
-
-        // Per-type RPC rather than sending the whole list, so two players toggling different types at once
-        // can't overwrite each other's change.
-        private void RPC_SetDenied(long sender, string prefab, bool denied)
-        {
-            if (!m_nview.IsOwner() || string.IsNullOrEmpty(prefab))
-                return;
-            var names = new HashSet<string>(ParseNames(m_nview.GetZDO().GetString(ZdoKeys.Denied)));
-            bool changed = denied ? names.Add(prefab) : names.Remove(prefab);
-            if (!changed)
-                return;
-            m_nview.GetZDO().Set(ZdoKeys.Denied, JoinNames(names));
-            if (!denied)
-                RequestTickSoon(FuelAddedTickDelay); // A type was turned back on: fuel it soon.
-        }
-
-        private static IEnumerable<string> ParseNames(string source)
-        {
-            if (string.IsNullOrEmpty(source))
-                yield break;
-            foreach (string raw in source.Split(','))
-            {
-                string name = raw.Trim();
-                if (name.Length > 0)
-                    yield return name;
-            }
-        }
-
-        private static string JoinNames(IEnumerable<string> names)
-        {
-            var sorted = new List<string>(names);
-            sorted.Sort(System.StringComparer.Ordinal);
-            return string.Join(",", sorted);
-        }
+        public void RequestSetDenied(string prefab, bool denied) => m_denyList.RequestSet(prefab, denied);
 
         // ---------------------------------------------------------------- simulation (owner only)
 
@@ -346,7 +292,7 @@ namespace WardsPlus.Components
             {
                 s_inputStationsSource = source;
                 s_inputStations.Clear();
-                s_inputStations.UnionWith(ParseNames(source));
+                s_inputStations.UnionWith(NameLists.Parse(source));
             }
             return s_inputStations.Contains(prefab);
         }
@@ -357,108 +303,45 @@ namespace WardsPlus.Components
         {
             WardPanel.AddNote(extras, Localization.instance.Localize("$wp_refuel_targets"));
             // Long lists (many station types in range) scroll instead of stretching the panel down the screen.
-            m_typeList = WardPanel.AddScrollGroup(extras, PanelListMaxRows).Content;
-            m_typeListSignature = null;
-            RebuildTypeListIfChanged();
+            m_typeList = new TypeToggleList(extras, m_denyList, "$wp_refuel_none", PanelListMaxRows);
+            RebuildTypeList();
         }
 
         public override void RefreshPanel()
         {
-            if (!m_typeList)
+            if (m_typeList == null || !m_typeList.IsAlive)
                 return;
 
             // Event-driven: rescan only when something that shapes the list changed (a station was added or
-            // removed anywhere, the range, the deny list, or the input-station config). Rows are rebuilt only
-            // if the result actually differs, so a click never lands on a row being replaced.
-            IsDenied(""); // Refresh the cached deny list.
+            // removed anywhere, the range, the deny list, or the input-station config). The list itself only
+            // replaces rows if the result differs, so a click never lands on a row being replaced.
             if (StationRegistry.Version != m_listVersion
                 || !Mathf.Approximately(GetRange(), m_listRange)
-                || m_deniedSource != m_listDenied
+                || m_denyList.Source != m_listDenied
                 || PluginConfig.RefuelInputStations.Value != m_listInputs)
             {
-                RebuildTypeListIfChanged();
+                RebuildTypeList();
             }
-
-            foreach (KeyValuePair<string, Toggle> pair in m_typeToggles)
-            {
-                bool on = !IsDenied(pair.Key);
-                if (pair.Value && pair.Value.isOn != on)
-                    pair.Value.SetIsOnWithoutNotify(on);
-            }
+            m_typeList.SyncToggles();
         }
 
-        /// <summary>
-        /// One row per station prefab type in range ("Campfire ×5"), plus denied types that aren't in range
-        /// right now, so they can still be turned back on. Checked = refuel.
-        /// </summary>
-        private void RebuildTypeListIfChanged()
+        /// <summary>One row per station prefab type in range ("Campfire ×5"). Checked = refuel.</summary>
+        private void RebuildTypeList()
         {
-            IsDenied(""); // Refresh the cached deny list.
             m_listVersion = StationRegistry.Version;
             m_listRange = GetRange();
-            m_listDenied = m_deniedSource;
+            m_listDenied = m_denyList.Source;
             m_listInputs = PluginConfig.RefuelInputStations.Value;
 
-            var counts = new SortedDictionary<string, int>(System.StringComparer.Ordinal);
-            var names = new Dictionary<string, string>();
+            var instances = new List<KeyValuePair<string, string>>();
             CollectTargets(m_targets);
             foreach (Target target in m_targets)
             {
-                string prefab = target.Station.Prefab;
-                counts.TryGetValue(prefab, out int count);
-                counts[prefab] = count + 1;
-                if (!names.ContainsKey(prefab))
-                    names[prefab] = Localization.instance.Localize(target.Station.Piece.m_name);
+                instances.Add(new KeyValuePair<string, string>(target.Station.Prefab,
+                    Localization.instance.Localize(target.Station.Piece.m_name)));
             }
             m_targets.Clear();
-
-            IsDenied(""); // Refresh the cached deny set.
-            foreach (string prefab in m_denied)
-            {
-                if (!counts.ContainsKey(prefab))
-                    counts[prefab] = 0;
-            }
-
-            var signature = new StringBuilder();
-            foreach (KeyValuePair<string, int> pair in counts)
-                signature.Append(pair.Key).Append(':').Append(pair.Value).Append(';');
-            if (signature.ToString() == m_typeListSignature)
-                return;
-            m_typeListSignature = signature.ToString();
-
-            WardPanel.ClearChildren(m_typeList);
-            m_typeToggles.Clear();
-
-            if (counts.Count == 0)
-            {
-                WardPanel.AddNote(m_typeList, Localization.instance.Localize("$wp_refuel_none"));
-                return;
-            }
-
-            var rows = new List<KeyValuePair<string, string>>(); // prefab, label
-            foreach (KeyValuePair<string, int> pair in counts)
-            {
-                string label = names.TryGetValue(pair.Key, out string display) ? display : PrefabDisplayName(pair.Key);
-                if (pair.Value > 1)
-                    label += $" ×{pair.Value}";
-                rows.Add(new KeyValuePair<string, string>(pair.Key, label));
-            }
-            rows.Sort((a, b) => string.Compare(a.Value, b.Value, System.StringComparison.CurrentCultureIgnoreCase));
-
-            foreach (KeyValuePair<string, string> row in rows)
-            {
-                string prefab = row.Key;
-                m_typeToggles[prefab] = WardPanel.AddToggleRow(m_typeList, row.Value, !IsDenied(prefab),
-                    on => RequestSetDenied(prefab, !on));
-            }
-        }
-
-        /// <summary>Localized piece name for a prefab that isn't in range (from the prefab itself).</summary>
-        private static string PrefabDisplayName(string prefab)
-        {
-            GameObject go = ZNetScene.instance ? ZNetScene.instance.GetPrefab(prefab) : null;
-            Piece piece = go ? go.GetComponent<Piece>() : null;
-            return piece ? Localization.instance.Localize(piece.m_name) : prefab;
+            m_typeList.Rebuild(instances);
         }
     }
 }

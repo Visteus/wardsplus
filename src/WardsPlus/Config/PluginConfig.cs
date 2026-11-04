@@ -24,6 +24,8 @@ namespace WardsPlus.Config
         public ConfigEntry<float> MinRange;
         public ConfigEntry<float> MaxRange;
         public ConfigEntry<Color> Color;
+        /// <summary>Color of the ward's second ring (e.g. the deposit range). Null for wards without one.</summary>
+        public ConfigEntry<Color> SecondaryRingColor;
 
         /// <summary>Clamps a requested range to the server-synced min/max.</summary>
         public float ClampRange(float value)
@@ -192,8 +194,12 @@ namespace WardsPlus.Config
             return result;
         }
 
+        /// <param name="secondaryRing">
+        /// For wards with a second ring: its config key (e.g. "Deposit Ring Color") and default color.
+        /// </param>
         private static WardConfig BindWard(ConfigFile cfg, WardType type, string recipe, string station,
-            float defaultRange, float minRange, float maxRange, Color color)
+            float defaultRange, float minRange, float maxRange, Color color,
+            KeyValuePair<string, Color>? secondaryRing = null)
         {
             string section = $"{type} Ward";
             var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
@@ -201,6 +207,10 @@ namespace WardsPlus.Config
 
             return new WardConfig
             {
+                SecondaryRingColor = secondaryRing.HasValue
+                    ? cfg.Bind(section, secondaryRing.Value.Key, secondaryRing.Value.Value,
+                        "Color of the ward's second range ring. Client-side. Requires a restart.")
+                    : null,
                 Enabled = cfg.Bind(section, "Enabled", true,
                     new ConfigDescription("Add this ward to the hammer. Requires a restart.", null,
                         new ConfigurationManagerAttributes { IsAdminOnly = true, Order = 10 })),

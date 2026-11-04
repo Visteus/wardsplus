@@ -289,12 +289,7 @@ namespace WardsPlus.Components
             {
                 s_alwaysSource = source;
                 s_alwaysRepair.Clear();
-                foreach (string raw in source.Split(','))
-                {
-                    string name = raw.Trim();
-                    if (name.Length > 0)
-                        s_alwaysRepair.Add(name);
-                }
+                s_alwaysRepair.UnionWith(NameLists.Parse(source));
             }
             return s_alwaysRepair.Count > 0 && s_alwaysRepair.Contains(Utils.GetPrefabName(wnt.gameObject));
         }

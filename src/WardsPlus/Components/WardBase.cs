@@ -20,6 +20,11 @@ namespace WardsPlus.Components
         public MeshRenderer m_model;
         public GameObject m_enabledEffect;
         public CircleProjector m_areaMarker;
+        /// <summary>
+        /// Optional second ring in its own color (e.g. the Gathering Ward's deposit range). Sized from
+        /// <see cref="GetSecondaryRange"/> and shown with the main ring; hidden while that range is 0.
+        /// </summary>
+        public CircleProjector m_secondaryMarker;
         public Container m_container;
         public float m_hoverOffset;
         /// <summary>Area-marker segment density taken from the vanilla ward, so large radii stay dense.</summary>
@@ -63,6 +68,8 @@ namespace WardsPlus.Components
             m_piece = GetComponent<Piece>();
             if (m_areaMarker)
                 m_areaMarker.gameObject.SetActive(false);
+            if (m_secondaryMarker)
+                m_secondaryMarker.gameObject.SetActive(false);
 
             m_nview.Register<int, bool>(WardRpcs.SetBool, RPC_SetBool);
             m_nview.Register<int, float>(WardRpcs.SetFloat, RPC_SetFloat);
@@ -237,23 +244,35 @@ namespace WardsPlus.Components
             UpdateAreaMarkerShape();
         }
 
+        /// <summary>Radius of <see cref="m_secondaryMarker"/>; 0 hides it. Wards with a second ring override this.</summary>
+        protected virtual float GetSecondaryRange() => 0f;
+
         private void UpdateAreaMarkerShape()
         {
-            if (!m_areaMarker)
-                return;
-            float range = GetRange();
-            m_areaMarker.m_radius = range;
-            // CircleProjector rebuilds its segments only when the count changes.
-            m_areaMarker.m_nrOfSegments = Mathf.Max(12, Mathf.RoundToInt(2f * Mathf.PI * range * m_markerSegmentsPerMeter));
+            ShapeMarker(m_areaMarker, GetRange());
+            if (m_secondaryMarker)
+                ShapeMarker(m_secondaryMarker, GetSecondaryRange());
         }
 
-        /// <summary>Shows the dotted range ring briefly; call repeatedly (hover, open panel) to keep it up.</summary>
+        private void ShapeMarker(CircleProjector marker, float range)
+        {
+            if (!marker || range <= 0f)
+                return;
+            marker.m_radius = range;
+            // CircleProjector rebuilds its segments only when the count changes.
+            marker.m_nrOfSegments = Mathf.Max(12, Mathf.RoundToInt(2f * Mathf.PI * range * m_markerSegmentsPerMeter));
+        }
+
+        /// <summary>Shows the dotted range ring(s) briefly; call repeatedly (hover, open panel) to keep them up.</summary>
         public void ShowAreaMarker()
         {
-            if (!m_areaMarker)
+            if (!m_areaMarker && !m_secondaryMarker)
                 return;
             UpdateAreaMarkerShape();
-            m_areaMarker.gameObject.SetActive(true);
+            if (m_areaMarker)
+                m_areaMarker.gameObject.SetActive(true);
+            if (m_secondaryMarker)
+                m_secondaryMarker.gameObject.SetActive(GetSecondaryRange() > 0f);
             CancelInvoke(nameof(HideAreaMarker));
             Invoke(nameof(HideAreaMarker), AreaMarkerLinger);
         }
@@ -262,6 +281,8 @@ namespace WardsPlus.Components
         {
             if (m_areaMarker)
                 m_areaMarker.gameObject.SetActive(false);
+            if (m_secondaryMarker)
+                m_secondaryMarker.gameObject.SetActive(false);
         }
 
         // ---------------------------------------------------------------- access + interaction

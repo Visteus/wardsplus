@@ -35,6 +35,11 @@ namespace WardsPlus.Pieces
             /// so clients deciding spawns near it always know about it.
             /// </summary>
             public bool Distant;
+            /// <summary>
+            /// Add a second range ring (WardBase.m_secondaryMarker), colored by the ward config's
+            /// SecondaryRingColor.
+            /// </summary>
+            public bool SecondaryRing;
         }
 
         private static readonly WardDefinition[] Definitions =
@@ -103,7 +108,7 @@ namespace WardsPlus.Pieces
                 return;
             }
 
-            if (!ConvertToWard(prefab, def, pieceConfig.Name, cfg.Color.Value, background))
+            if (!ConvertToWard(prefab, def, pieceConfig.Name, cfg, background))
                 return;
 
             // Icon is rendered from the tinted prefab, so each ward's hammer icon shows its own color.
@@ -117,8 +122,9 @@ namespace WardsPlus.Pieces
         }
 
         /// <summary>Swaps PrivateArea for the ward component while keeping the model, glow and range ring.</summary>
-        private static bool ConvertToWard(GameObject prefab, WardDefinition def, string nameToken, Color color, Sprite background)
+        private static bool ConvertToWard(GameObject prefab, WardDefinition def, string nameToken, WardConfig cfg, Sprite background)
         {
+            Color color = cfg.Color.Value;
             var privateArea = prefab.GetComponent<PrivateArea>();
             if (!privateArea)
             {
@@ -144,6 +150,14 @@ namespace WardsPlus.Pieces
 
             ApplyColor(prefab, ward, color);
 
+            if (def.SecondaryRing)
+            {
+                if (ward.m_areaMarker && cfg.SecondaryRingColor != null)
+                    ward.m_secondaryMarker = AddSecondaryRing(def, ward.m_areaMarker, cfg.SecondaryRingColor.Value);
+                else
+                    Plugin.Log.LogWarning($"{def.PrefabName}: no area marker or ring color config; it won't show a second ring.");
+            }
+
             if (def.ContainerWidth > 0 && def.ContainerHeight > 0)
                 ward.m_container = AddContainer(prefab, def, nameToken, background);
 
@@ -155,6 +169,59 @@ namespace WardsPlus.Pieces
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// A copy of the area-marker ring, next to it, whose segments come from a tinted copy of the vanilla
+        /// segment prefab ("Circle_section", one mesh using the shared "station_radius" material; only its
+        /// _Color is set, so the copy never changes the vanilla ring or workbench rings).
+        /// </summary>
+        private static CircleProjector AddSecondaryRing(WardDefinition def, CircleProjector marker, Color color)
+        {
+            Transform source = marker.transform;
+            GameObject copy = Object.Instantiate(source.gameObject, source.parent, false);
+            copy.name = source.gameObject.name + "_Secondary";
+            copy.transform.localPosition = source.localPosition;
+            copy.transform.localRotation = source.localRotation;
+            copy.transform.localScale = source.localScale;
+
+            var ring = copy.GetComponent<CircleProjector>();
+            if (marker.m_prefab)
+            {
+                // A Jotunn clone lives in its inactive prefab container, outside the ward's hierarchy: a template
+                // inside the ward would be remapped to each placed ward's (inactive) copy and spawn hidden segments.
+                GameObject segment = PrefabManager.Instance.CreateClonedPrefab($"{def.PrefabName}_RingSegment", marker.m_prefab);
+                TintSegment(segment, color);
+                ring.m_prefab = segment;
+            }
+            return ring;
+        }
+
+        private static void TintSegment(GameObject segment, Color color)
+        {
+            var tinted = new Dictionary<Material, Material>();
+            foreach (Renderer renderer in segment.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] materials = renderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    Material source = materials[i];
+                    if (!source)
+                        continue;
+                    if (!tinted.TryGetValue(source, out Material copy))
+                    {
+                        copy = new Material(source) { name = $"{source.name}_{segment.name}" };
+                        foreach (string property in new[] { "_Color", "_TintColor", "_BaseColor" })
+                        {
+                            if (copy.HasProperty(property))
+                                copy.SetColor(property, new Color(color.r, color.g, color.b, copy.GetColor(property).a));
+                        }
+                        tinted[source] = copy;
+                    }
+                    materials[i] = copy;
+                }
+                renderer.sharedMaterials = materials;
+            }
         }
 
         private static void DestroyIfChild(GameObject prefab, GameObject child)
