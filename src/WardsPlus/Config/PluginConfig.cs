@@ -1,0 +1,281 @@
+using System.Collections.Generic;
+using BepInEx.Configuration;
+using Jotunn.Configs;
+using UnityEngine;
+
+namespace WardsPlus.Config
+{
+    /// <summary>Every ward type the mod adds.</summary>
+    public enum WardType
+    {
+        Repair,
+        Refuel,
+        Spawnproof,
+        Defender,
+        Gathering,
+    }
+
+    /// <summary>Config entries shared by every ward type (one section per ward).</summary>
+    internal sealed class WardConfig
+    {
+        public ConfigEntry<bool> Enabled;
+        public ConfigEntry<string> Recipe;
+        public ConfigEntry<string> CraftingStation;
+        public ConfigEntry<float> DefaultRange;
+        public ConfigEntry<float> MinRange;
+        public ConfigEntry<float> MaxRange;
+        public ConfigEntry<Color> Color;
+        /// <summary>Color of the ward's second ring (e.g. the deposit range). Null for wards without one.</summary>
+        public ConfigEntry<Color> SecondaryRingColor;
+
+        /// <summary>Clamps a requested range to the server-synced min/max.</summary>
+        public float ClampRange(float value)
+        {
+            float min = Mathf.Min(MinRange.Value, MaxRange.Value);
+            float max = Mathf.Max(MinRange.Value, MaxRange.Value);
+            return Mathf.Clamp(value, min, max);
+        }
+
+        /// <summary>
+        /// Parses "Item:Amount,Item:Amount" into Jotunn requirement configs. Bad entries are logged and skipped.
+        /// </summary>
+        public RequirementConfig[] ParseRecipe()
+        {
+            var result = new List<RequirementConfig>();
+            foreach (KeyValuePair<string, int> pair in PluginConfig.ParseItemAmounts(Recipe))
+                result.Add(new RequirementConfig(pair.Key, pair.Value, 0, true));
+            return result.ToArray();
+        }
+    }
+
+    /// <summary>
+    /// All BepInEx config entries. Entries marked admin-only are synced from the server by Jotunn,
+    /// so a dedicated server's values win over each client's local file.
+    /// </summary>
+    internal static class PluginConfig
+    {
+        private static readonly Dictionary<WardType, WardConfig> Wards = new Dictionary<WardType, WardConfig>();
+
+        public static WardConfig For(WardType type) => Wards[type];
+
+        /// <summary>Whether the vanilla ward's spherical glow orb is shown on active wards.</summary>
+        public static ConfigEntry<bool> ShowGlowOrb;
+
+        /// <summary>Whether the ward settings panel keeps the position the player dragged it to.</summary>
+        public static ConfigEntry<bool> RememberPanelPosition;
+
+        /// <summary>Writes "[debug]" lines for ward events (ticks, pickups, deliveries, summons...) to the log.</summary>
+        public static ConfigEntry<bool> DebugLogging;
+
+        // ---- Repair Ward ----
+        /// <summary>"Item:Repairs" pairs: which items the Repair Ward burns and how many repairs each gives.</summary>
+        public static ConfigEntry<string> RepairFuel;
+        public static ConfigEntry<float> RepairScanInterval;
+        public static ConfigEntry<float> RepairInterval;
+        public static ConfigEntry<float> RepairDefaultThreshold;
+        public static ConfigEntry<string> RepairAlwaysRepair;
+
+        // ---- Refuel Ward ----
+        public static ConfigEntry<float> RefuelScanInterval;
+        public static ConfigEntry<string> RefuelDefaultDenied;
+        public static ConfigEntry<string> RefuelInputStations;
+
+        // ---- Defender Ward ----
+        public static ConfigEntry<float> DefenderScanInterval;
+        public static ConfigEntry<int> DefenderSummonLevel;
+        public static ConfigEntry<float> DefenderSummonCooldown;
+        public static ConfigEntry<float> DefenderIdleDespawn;
+        public static ConfigEntry<string> DefenderDeniedCreatures;
+        public static ConfigEntry<string> DefenderTrophyOverrides;
+
+        // ---- Gathering Ward ----
+        public static ConfigEntry<float> GatheringScanInterval;
+        public static ConfigEntry<float> GatheringPickupDelay;
+        public static ConfigEntry<bool> GatheringIgnorePlayerDropped;
+        public static ConfigEntry<string> GatheringIgnoredItems;
+        public static ConfigEntry<float> GatheringDefaultDepositRange;
+        public static ConfigEntry<float> GatheringMaxDepositRange;
+        public static ConfigEntry<string> GatheringDefaultDeniedContainers;
+
+        public static void Bind(ConfigFile cfg)
+        {
+            ShowGlowOrb = cfg.Bind("General", "Show Glow Orb", false,
+                "Show the vanilla ward's spherical glow above active wards. When off, only the colored magic lines glow. Client-side. Requires a reload.");
+
+            RememberPanelPosition = cfg.Bind("General", "Remember Panel Position", false,
+                "Keep the ward settings panel where you last dragged it. When off, it always opens at its default spot, and turning this off clears the remembered position. Client-side, does NOT require a reload.");
+
+            DebugLogging = cfg.Bind("General", "Debug Logging", false,
+                "Write diagnostic \"[debug]\" lines to the BepInEx log for ward events: ticks, settings changes, pickups, deposits, refuels, repairs, summons, blocked spawns and refunds. Meant for testing and bug reports; it can be chatty. Only logs what happens on this machine (each ward runs on one player's game). Client-side, does NOT require a reload.");
+
+            Wards[WardType.Repair] = BindWard(cfg, WardType.Repair,
+                recipe: "RoundLog:10,Stone:10,GreydwarfEye:50", station: "piece_workbench",
+                defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(0.25f, 1f, 0.35f));
+            BindRepair(cfg, $"{WardType.Repair} Ward");
+
+            Wards[WardType.Refuel] = BindWard(cfg, WardType.Refuel,
+                recipe: "FineWood:10,Stone:10,Coal:25,SurtlingCore:1", station: "piece_workbench",
+                defaultRange: 20f, minRange: 5f, maxRange: 40f, color: new Color(1f, 0.5f, 0.1f));
+            BindRefuel(cfg, $"{WardType.Refuel} Ward");
+
+            Wards[WardType.Spawnproof] = BindWard(cfg, WardType.Spawnproof,
+                recipe: "ElderBark:10,Stone:50,SurtlingCore:1", station: "piece_workbench",
+                defaultRange: 30f, minRange: 10f, maxRange: 60f, color: new Color(0.2f, 0.6f, 1f));
+
+            Wards[WardType.Defender] = BindWard(cfg, WardType.Defender,
+                recipe: "YggdrasilWood:10,BlackMarble:10,BlackCore:1,DragonTear:5", station: "forge",
+                defaultRange: 20f, minRange: 5f, maxRange: 20f, color: new Color(0.7f, 0.3f, 1f));
+            BindDefender(cfg, $"{WardType.Defender} Ward");
+
+            Wards[WardType.Gathering] = BindWard(cfg, WardType.Gathering,
+                recipe: "FineWood:10,Stone:10,SurtlingCore:1,Feathers:25", station: "piece_workbench",
+                defaultRange: 10f, minRange: 2f, maxRange: 20f, color: new Color(1f, 0.85f, 0.2f),
+                secondaryRing: new KeyValuePair<string, Color>("Deposit Ring Color", new Color(0.35f, 0.8f, 1f)));
+            BindGathering(cfg, $"{WardType.Gathering} Ward");
+        }
+
+        private static void BindGathering(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            GatheringScanInterval = cfg.Bind(section, "Scan Interval", 30f,
+                new ConfigDescription("Seconds between full checks for loose items and deposits (varies by ±20% so wards don't sync up). " +
+                    "New drops in range are noticed straight away; this catches anything else.", new AcceptableValueRange<float>(5f, 600f), admin));
+            GatheringPickupDelay = cfg.Bind(section, "Pickup Delay", 2f,
+                new ConfigDescription("Seconds a new drop lies on the ground before the ward picks it up.",
+                    new AcceptableValueRange<float>(0f, 30f), admin));
+            GatheringIgnorePlayerDropped = cfg.Bind(section, "Ignore Player-Dropped Items", true,
+                new ConfigDescription("Leave items that a player dropped on purpose, like vanilla's auto-pickup does.", null, admin));
+            GatheringIgnoredItems = cfg.Bind(section, "Ignored Items", "",
+                new ConfigDescription("Item prefab names the ward never picks up (e.g. Stone,Wood). Eggs, fish, food placed on tables and items stuck in tar are never picked up. Comma separated.", null, admin));
+            GatheringDefaultDepositRange = cfg.Bind(section, "Default Deposit Range", 10f,
+                new ConfigDescription("Deposit range (m) a newly placed ward starts with. 0 means it doesn't deposit.",
+                    new AcceptableValueRange<float>(0f, 200f), admin));
+            GatheringMaxDepositRange = cfg.Bind(section, "Max Deposit Range", 20f,
+                new ConfigDescription("Largest deposit range (m) players can set in the ward's panel.",
+                    new AcceptableValueRange<float>(0f, 200f), admin));
+            GatheringDefaultDeniedContainers = cfg.Bind(section, "Default Denied Containers", "",
+                new ConfigDescription("Container prefab names a newly placed ward starts with turned off for deposits (e.g. piece_chest_wood). " +
+                    "Players can change it per ward in its panel. Comma separated.", null, admin));
+        }
+
+        private static void BindDefender(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            DefenderScanInterval = cfg.Bind(section, "Scan Interval", 2f,
+                new ConfigDescription("Seconds between checks for enemies in range (varies by ±20% so wards don't sync up).",
+                    new AcceptableValueRange<float>(1f, 30f), admin));
+            DefenderSummonLevel = cfg.Bind(section, "Summon Level", 1,
+                new ConfigDescription("Level of the summoned defender: 1 is a normal creature, 2 is one star, 3 is two stars.",
+                    new AcceptableValueRange<int>(1, 3), admin));
+            DefenderSummonCooldown = cfg.Bind(section, "Summon Cooldown", 30f,
+                new ConfigDescription("Minimum seconds between two summons from the same ward, so a defender that dies isn't replaced instantly.",
+                    new AcceptableValueRange<float>(0f, 600f), admin));
+            DefenderIdleDespawn = cfg.Bind(section, "Idle Despawn", 10f,
+                new ConfigDescription("Seconds a defender stays once it has nothing left to fight.",
+                    new AcceptableValueRange<float>(3f, 120f), admin));
+            DefenderDeniedCreatures = cfg.Bind(section, "Denied Creatures", "",
+                new ConfigDescription("Creature prefab names that can never be summoned (e.g. Wolf,Lox). Bosses and water-only creatures never are. Comma separated.", null, admin));
+            DefenderTrophyOverrides = cfg.Bind(section, "Trophy Overrides", "",
+                new ConfigDescription("Trophy:Creature pairs (prefab names) that make a trophy summon that creature by default, " +
+                    "e.g. TrophyDraugr:Draugr_Ranged. Also lets a trophy summon a creature that doesn't drop it. Comma separated.", null, admin));
+        }
+
+        private static void BindRepair(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            RepairFuel = cfg.Bind(section, "Fuel", "Resin:10,GreydwarfEye:10",
+                new ConfigDescription("Items the ward burns as fuel, as Item:Repairs pairs (item prefab names), in the order they are used. " +
+                    "Each item gives that many repairs; one repair fully heals one piece.", null, admin));
+            RepairScanInterval = cfg.Bind(section, "Scan Interval", 30f,
+                new ConfigDescription("Seconds between checks for damaged pieces while nothing needs repairing (varies by ±20% so wards don't sync up).",
+                    new AcceptableValueRange<float>(5f, 600f), admin));
+            RepairInterval = cfg.Bind(section, "Repair Interval", 1f,
+                new ConfigDescription("Seconds between repairs while damaged pieces are in range.",
+                    new AcceptableValueRange<float>(0.25f, 30f), admin));
+            RepairDefaultThreshold = cfg.Bind(section, "Default Repair Below", 100f,
+                new ConfigDescription("Health % a newly placed ward starts with for 'Repair below'. Pieces are repaired only when their health is below it. " +
+                    "100 repairs any damage; lower values save fuel on wear from rain.", new AcceptableValueRange<float>(10f, 100f), admin));
+            RepairAlwaysRepair = cfg.Bind(section, "Always Repair", "piece_sharpstakes,piece_dvergr_sharpstakes",
+                new ConfigDescription("Piece prefab names repaired at any damage, ignoring each ward's 'Repair below' setting. Comma separated.", null, admin));
+        }
+
+        private static void BindRefuel(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            RefuelScanInterval = cfg.Bind(section, "Scan Interval", 30f,
+                new ConfigDescription("Seconds between top-ups of the fires and smelters in range (varies by ±20% so wards don't sync up).",
+                    new AcceptableValueRange<float>(5f, 600f), admin));
+            RefuelDefaultDenied = cfg.Bind(section, "Default Denied", "",
+                new ConfigDescription("Piece prefab names a newly placed ward starts with turned off (e.g. piece_bathtub,smelter). " +
+                    "Players can change it per ward in its panel. Comma separated.", null, admin));
+            RefuelInputStations = cfg.Bind(section, "Input Stations", "charcoal_kiln",
+                new ConfigDescription("Prefab names of stations with no fuel slot whose input the ward loads instead, like the charcoal kiln's wood. " +
+                    "Fires and smelter fuel are always handled; smelter ore never is. Comma separated.", null, admin));
+        }
+
+        /// <summary>
+        /// Parses "Item:Amount,Item:Amount" (amounts must be positive whole numbers). Bad entries are logged and skipped.
+        /// </summary>
+        public static List<KeyValuePair<string, int>> ParseItemAmounts(ConfigEntry<string> entry)
+        {
+            var result = new List<KeyValuePair<string, int>>();
+            foreach (string raw in (entry.Value ?? "").Split(','))
+            {
+                string item = raw.Trim();
+                if (item.Length == 0)
+                    continue;
+
+                string[] parts = item.Split(':');
+                if (parts.Length != 2 || parts[0].Trim().Length == 0 || !int.TryParse(parts[1].Trim(), out int amount) || amount <= 0)
+                {
+                    Plugin.Log.LogWarning($"[{entry.Definition.Section}] {entry.Definition.Key}: ignoring invalid entry '{item}'. Expected Item:Amount.");
+                    continue;
+                }
+
+                result.Add(new KeyValuePair<string, int>(parts[0].Trim(), amount));
+            }
+            return result;
+        }
+
+        /// <param name="secondaryRing">
+        /// For wards with a second ring: its config key (e.g. "Deposit Ring Color") and default color.
+        /// </param>
+        private static WardConfig BindWard(ConfigFile cfg, WardType type, string recipe, string station,
+            float defaultRange, float minRange, float maxRange, Color color,
+            KeyValuePair<string, Color>? secondaryRing = null)
+        {
+            string section = $"{type} Ward";
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+            var rangeLimits = new AcceptableValueRange<float>(1f, 200f);
+
+            return new WardConfig
+            {
+                SecondaryRingColor = secondaryRing.HasValue
+                    ? cfg.Bind(section, secondaryRing.Value.Key, secondaryRing.Value.Value,
+                        "Color of the ward's second range ring. Client-side. Requires a restart.")
+                    : null,
+                Enabled = cfg.Bind(section, "Enabled", true,
+                    new ConfigDescription("Add this ward to the hammer. Requires a restart.", null,
+                        new ConfigurationManagerAttributes { IsAdminOnly = true, Order = 10 })),
+                Recipe = cfg.Bind(section, "Recipe", recipe,
+                    new ConfigDescription("Build cost as Item:Amount pairs, comma separated (item prefab names). Requires a restart.", null,
+                        new ConfigurationManagerAttributes { IsAdminOnly = true, Order = 9 })),
+                CraftingStation = cfg.Bind(section, "Crafting Station", station,
+                    new ConfigDescription("Prefab name of the station required nearby to build it (e.g. piece_workbench, forge, blackforge). Empty for none. Requires a restart.", null,
+                        new ConfigurationManagerAttributes { IsAdminOnly = true, Order = 8 })),
+                DefaultRange = cfg.Bind(section, "Default Range", defaultRange,
+                    new ConfigDescription("Range (m) a newly placed ward starts with.", rangeLimits, admin)),
+                MinRange = cfg.Bind(section, "Min Range", minRange,
+                    new ConfigDescription("Smallest range (m) players can set in the ward's panel.", rangeLimits, admin)),
+                MaxRange = cfg.Bind(section, "Max Range", maxRange,
+                    new ConfigDescription("Largest range (m) players can set in the ward's panel.", rangeLimits, admin)),
+                Color = cfg.Bind(section, "Glow Color", color,
+                    "Color of the ward's magic lines, glow and icon. Client-side. Requires a restart."),
+            };
+        }
+    }
+}

@@ -4,6 +4,7 @@
     "website_url": "https://github.com/Visteus/wardsplus",
     "description": "A useful set of new Wards to use around your base!",
     "dependencies": [
-        "denikson-BepInExPack_Valheim-5.4.2360"
+        "denikson-BepInExPack_Valheim-5.4.2360",
+        "ValheimModding-Jotunn-2.30.2"
     ]
 }

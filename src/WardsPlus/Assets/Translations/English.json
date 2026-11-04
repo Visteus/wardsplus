@@ -1,0 +1,37 @@
+{
+  "wp_ward_repair": "Repair Ward",
+  "wp_ward_repair_desc": "Uses fuel items from its inventory to repair damaged structures within range.",
+  "wp_ward_refuel": "Refuel Ward",
+  "wp_ward_refuel_desc": "Keeps nearby fires, sconces and smelters fueled from its inventory.",
+  "wp_ward_spawnproof": "Spawnproof Ward",
+  "wp_ward_spawnproof_desc": "Prevents creatures from spawning within its radius.",
+  "wp_ward_defender": "Defender Ward",
+  "wp_ward_gathering": "Gathering Ward",
+  "wp_ward_gathering_desc": "Picks up loose items in its range, and moves them into nearby chests that already hold the same item.",
+  "wp_ward_defender_desc":"Insert a trophy. When enemies come near, it summons a friendly copy of that creature to defend your base.",
+
+  "wp_status_active": "Active",
+  "wp_status_inactive": "Inactive",
+  "wp_range": "Range",
+  "wp_open": "Open",
+  "wp_panel_enabled": "Enabled",
+
+  "wp_repair_charges": "Charges",
+  "wp_repair_below": "Repair below",
+  "wp_repair_fuel": "Fuel",
+  "wp_repair_fuel_none": "none configured",
+
+  "wp_refuel_targets": "Refuel in range:",
+  "wp_refuel_none": "Nothing to refuel in range.",
+
+  "wp_defender_summons": "Summons",
+  "wp_defender_no_trophy": "No trophy",
+  "wp_defender_insert_trophy": "Insert a creature's trophy to choose the defender.",
+  "wp_defender_trophy_only": "Only a trophy of a creature that can be summoned fits here.",
+
+  "wp_gathering_full": "Inventory full",
+  "wp_gathering_deposit_range": "Deposit range",
+  "wp_gathering_deposit_off": "Off",
+  "wp_gathering_deposit_to": "Deposit to:",
+  "wp_gathering_deposit_none": "No chests to deposit into in range."
+}

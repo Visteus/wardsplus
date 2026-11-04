@@ -1,14 +1,18 @@
 using BepInEx;
-using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using Jotunn.Utils;
+using WardsPlus.Config;
+using WardsPlus.Pieces;
+using WardsPlus.UI;
+using WardsPlus.Util;
 
 namespace WardsPlus
 {
     // ModInfo is generated at build time from the .csproj (see Directory.Build.targets).
     [BepInPlugin(ModInfo.Guid, ModInfo.Name, ModInfo.Version)]
-    // Declare dependencies on other plugins by their GUID. Hard = refuse to load without it.
-    // [BepInDependency("com.jotunn.jotunn", BepInDependency.DependencyFlags.HardDependency)]
+    [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
+    [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class Plugin : BaseUnityPlugin
     {
         internal static Plugin Instance { get; private set; }
@@ -21,6 +25,12 @@ namespace WardsPlus
             Instance = this;
             Log = Logger;
 
+            PluginConfig.Bind(Config);
+            Translations.Load();
+            WardPieces.Init();
+            PluginConfig.RememberPanelPosition.SettingChanged += (_, __) => WardPanel.OnRememberPositionChanged();
+
+            _harmony.PatchAll();
         }
 
         // Lets hot-reload tools (e.g. ScriptEngine) cleanly unload the mod.
