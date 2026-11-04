@@ -30,6 +30,11 @@ namespace WardsPlus.Pieces
             public Type Component;
             public int ContainerWidth;
             public int ContainerHeight;
+            /// <summary>
+            /// Make it a "distant" network object, synced and loaded two zones further out than normal pieces,
+            /// so clients deciding spawns near it always know about it.
+            /// </summary>
+            public bool Distant;
         }
 
         private static readonly WardDefinition[] Definitions =
@@ -39,7 +44,7 @@ namespace WardsPlus.Pieces
             new WardDefinition { Type = WardType.Refuel, PrefabName = "WP_Ward_Refuel", Token = "wp_ward_refuel",
                 Component = typeof(RefuelWard), ContainerWidth = 4, ContainerHeight = 2 },
             new WardDefinition { Type = WardType.Spawnproof, PrefabName = "WP_Ward_Spawnproof", Token = "wp_ward_spawnproof",
-                Component = typeof(SpawnproofWard) },
+                Component = typeof(SpawnproofWard), Distant = true },
             new WardDefinition { Type = WardType.Defender, PrefabName = "WP_Ward_Defender", Token = "wp_ward_defender",
                 Component = typeof(DefenderWard), ContainerWidth = 1, ContainerHeight = 1 },
         };
@@ -141,6 +146,13 @@ namespace WardsPlus.Pieces
 
             if (def.ContainerWidth > 0 && def.ContainerHeight > 0)
                 ward.m_container = AddContainer(prefab, def, nameToken, background);
+
+            if (def.Distant)
+            {
+                ZNetView view = prefab.GetComponent<ZNetView>();
+                if (view)
+                    view.m_distant = true;
+            }
 
             return true;
         }
