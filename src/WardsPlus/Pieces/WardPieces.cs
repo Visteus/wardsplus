@@ -191,8 +191,15 @@ namespace WardsPlus.Pieces
                 // A Jotunn clone lives in its inactive prefab container, outside the ward's hierarchy: a template
                 // inside the ward would be remapped to each placed ward's (inactive) copy and spawn hidden segments.
                 GameObject segment = PrefabManager.Instance.CreateClonedPrefab($"{def.PrefabName}_RingSegment", marker.m_prefab);
-                TintSegment(segment, color);
-                ring.m_prefab = segment;
+                if (segment)
+                {
+                    TintSegment(segment, color);
+                    ring.m_prefab = segment;
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"{def.PrefabName}: couldn't copy the ring segment; its second ring keeps the vanilla color.");
+                }
             }
             return ring;
         }
