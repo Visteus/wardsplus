@@ -32,6 +32,16 @@ namespace WardsPlus.Util
         public static readonly int SummonTime = "WP_SummonTime".GetStableHashCode();
         /// <summary>On a summoned creature: the ward that summoned it (ZDOID). Marks it as a defender on every client.</summary>
         public static readonly KeyValuePair<int, int> SummonOf = ZDO.GetHashZDOID("WP_SummonOf");
+
+        // Gathering Ward
+        /// <summary>Radius (m) of the area the ward deposits into nearby containers from; 0 = off (float).</summary>
+        public static readonly int DepositRange = "WP_DepositRange".GetStableHashCode();
+        /// <summary>Comma-separated container prefab names this ward won't deposit into (string).</summary>
+        public static readonly int DepositDenied = "WP_DepositDeny".GetStableHashCode();
+        /// <summary>Set once the config's default container deny list has been stamped onto this ward (bool).</summary>
+        public static readonly int DepositDeniedInit = "WP_DepositDenyInit".GetStableHashCode();
+        /// <summary>On a dropped item: a player dropped it, so Gathering Wards leave it alone (bool).</summary>
+        public static readonly int PlayerDropped = "WP_PlayerDropped".GetStableHashCode();
     }
 
     /// <summary>RPC names registered on every ward's ZNetView.</summary>
@@ -53,5 +63,11 @@ namespace WardsPlus.Util
         public const string SetCreature = "WP_SetCreature";
         /// <summary>Broadcast by a Defender Ward: (position) play the summon "poof" there, on every client.</summary>
         public const string SummonFx = "WP_SummonFx";
+        /// <summary>Asks a Gathering Ward's owner to deny or allow one container prefab type.</summary>
+        public const string SetDepositDenied = "WP_SetDepositDenied";
+        /// <summary>On a container: (ward, packed items) to add onto matching stacks. Applied by the container's owner.</summary>
+        public const string ContainerDeposit = "WP_ContainerDeposit";
+        /// <summary>On a Gathering Ward: (packed items) a container couldn't take, put back in the ward's inventory.</summary>
+        public const string DepositRefund = "WP_DepositRefund";
     }
 }

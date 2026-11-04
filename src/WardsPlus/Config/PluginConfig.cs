@@ -12,6 +12,7 @@ namespace WardsPlus.Config
         Refuel,
         Spawnproof,
         Defender,
+        Gathering,
     }
 
     /// <summary>Config entries shared by every ward type (one section per ward).</summary>
@@ -84,6 +85,15 @@ namespace WardsPlus.Config
         public static ConfigEntry<string> DefenderDeniedCreatures;
         public static ConfigEntry<string> DefenderTrophyOverrides;
 
+        // ---- Gathering Ward ----
+        public static ConfigEntry<float> GatheringScanInterval;
+        public static ConfigEntry<float> GatheringPickupDelay;
+        public static ConfigEntry<bool> GatheringIgnorePlayerDropped;
+        public static ConfigEntry<string> GatheringIgnoredItems;
+        public static ConfigEntry<float> GatheringDefaultDepositRange;
+        public static ConfigEntry<float> GatheringMaxDepositRange;
+        public static ConfigEntry<string> GatheringDefaultDeniedContainers;
+
         public static void Bind(ConfigFile cfg)
         {
             ShowGlowOrb = cfg.Bind("General", "Show Glow Orb", false,
@@ -110,6 +120,37 @@ namespace WardsPlus.Config
                 recipe: "YggdrasilWood:10,BlackMarble:10,BlackCore:1,DragonTear:5", station: "forge",
                 defaultRange: 20f, minRange: 5f, maxRange: 20f, color: new Color(0.7f, 0.3f, 1f));
             BindDefender(cfg, $"{WardType.Defender} Ward");
+
+            Wards[WardType.Gathering] = BindWard(cfg, WardType.Gathering,
+                recipe: "FineWood:10,Stone:10,SurtlingCore:1,Feathers:25", station: "piece_workbench",
+                defaultRange: 10f, minRange: 2f, maxRange: 20f, color: new Color(1f, 0.85f, 0.2f),
+                secondaryRing: new KeyValuePair<string, Color>("Deposit Ring Color", new Color(0.35f, 0.8f, 1f)));
+            BindGathering(cfg, $"{WardType.Gathering} Ward");
+        }
+
+        private static void BindGathering(ConfigFile cfg, string section)
+        {
+            var admin = new ConfigurationManagerAttributes { IsAdminOnly = true };
+
+            GatheringScanInterval = cfg.Bind(section, "Scan Interval", 30f,
+                new ConfigDescription("Seconds between full checks for loose items and deposits (varies by ±20% so wards don't sync up). " +
+                    "New drops in range are noticed straight away; this catches anything else.", new AcceptableValueRange<float>(5f, 600f), admin));
+            GatheringPickupDelay = cfg.Bind(section, "Pickup Delay", 2f,
+                new ConfigDescription("Seconds a new drop lies on the ground before the ward picks it up.",
+                    new AcceptableValueRange<float>(0f, 30f), admin));
+            GatheringIgnorePlayerDropped = cfg.Bind(section, "Ignore Player-Dropped Items", true,
+                new ConfigDescription("Leave items that a player dropped on purpose, like vanilla's auto-pickup does.", null, admin));
+            GatheringIgnoredItems = cfg.Bind(section, "Ignored Items", "",
+                new ConfigDescription("Item prefab names the ward never picks up (e.g. Stone,Wood). Eggs, fish, food placed on tables and items stuck in tar are never picked up. Comma separated.", null, admin));
+            GatheringDefaultDepositRange = cfg.Bind(section, "Default Deposit Range", 10f,
+                new ConfigDescription("Deposit range (m) a newly placed ward starts with. 0 means it doesn't deposit.",
+                    new AcceptableValueRange<float>(0f, 200f), admin));
+            GatheringMaxDepositRange = cfg.Bind(section, "Max Deposit Range", 20f,
+                new ConfigDescription("Largest deposit range (m) players can set in the ward's panel.",
+                    new AcceptableValueRange<float>(0f, 200f), admin));
+            GatheringDefaultDeniedContainers = cfg.Bind(section, "Default Denied Containers", "",
+                new ConfigDescription("Container prefab names a newly placed ward starts with turned off for deposits (e.g. piece_chest_wood). " +
+                    "Players can change it per ward in its panel. Comma separated.", null, admin));
         }
 
         private static void BindDefender(ConfigFile cfg, string section)

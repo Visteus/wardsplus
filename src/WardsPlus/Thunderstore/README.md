@@ -56,6 +56,25 @@ Each ward has its own config section (`[Repair Ward]`, `[Refuel Ward]`, `[Spawnp
 | Default Denied | *(empty)* | Prefab names | Pieces a newly placed ward starts with turned off (e.g. `piece_bathtub,smelter`). Players can change this per ward in its panel. Comma separated. |
 | Input Stations | `charcoal_kiln` | Prefab names | Stations with no fuel slot whose input the ward loads instead, like the charcoal kiln's wood. Fires and smelter fuel are always handled; smelter ore never is. Comma separated. |
 
+### Gathering Ward
+| Setting | Default | Allowed | Description |
+|---|---|---|---|
+| Enabled | `true` | `true` / `false` | Add this ward to the hammer. Requires a restart. |
+| Recipe | `FineWood:10,Stone:10,SurtlingCore:1,Feathers:25` | `Item:Amount` pairs | Build cost (item prefab names), comma separated. Requires a restart. |
+| Crafting Station | `piece_workbench` | Prefab name | Station required nearby to build it (e.g. `piece_workbench`, `forge`, `blackforge`). Empty for none. Requires a restart. |
+| Default Range | `10` | 1–200 | Pickup range a newly placed ward starts with. |
+| Min Range | `2` | 1–200 | Smallest pickup range players can set in the ward's panel. |
+| Max Range | `20` | 1–200 | Largest pickup range players can set in the ward's panel. |
+| Glow Color | `FFD933FF` (yellow) | RGBA hex | *(client)* Color of the ward's magic lines, glow and icon. Requires a restart. |
+| Deposit Ring Color | `59CCFFFF` (light blue) | RGBA hex | *(client)* Color of the deposit-range ring. Requires a restart. |
+| Scan Interval | `30` | 5–600 | Seconds between full checks for loose items and deposits. New drops in range are noticed straight away; this catches anything else. Varies by ±20% so wards don't sync up. |
+| Pickup Delay | `2` | 0–30 | Seconds a new drop lies on the ground before the ward picks it up. |
+| Ignore Player-Dropped Items | `true` | `true` / `false` | Leave items that a player dropped on purpose, like vanilla's auto-pickup does. |
+| Ignored Items | *(empty)* | Prefab names | Items the ward never picks up (e.g. `Stone,Wood`). Eggs, fish, food placed on tables and items stuck in tar are never picked up. Comma separated. |
+| Default Deposit Range | `10` | 0–200 | Deposit range a newly placed ward starts with. 0 means it doesn't deposit. |
+| Max Deposit Range | `20` | 0–200 | Largest deposit range players can set in the ward's panel. |
+| Default Denied Containers | *(empty)* | Prefab names | Containers a newly placed ward starts with turned off for deposits (e.g. `piece_chest_wood`). Players can change this per ward in its panel. Comma separated. |
+
 ### Spawnproof Ward
 | Setting | Default | Allowed | Description |
 |---|---|---|---|

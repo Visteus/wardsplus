@@ -45,6 +45,14 @@ namespace WardsPlus.UI
         /// <summary>False once the panel has closed and destroyed the list.</summary>
         public bool IsAlive => m_content;
 
+        /// <summary>Shows or hides the whole list (e.g. while the feature it configures is turned off).</summary>
+        public void SetVisible(bool visible)
+        {
+            Transform root = m_content ? m_content.parent : null;
+            if (root && root.gameObject.activeSelf != visible)
+                root.gameObject.SetActive(visible);
+        }
+
         /// <summary>
         /// Rebuilds the rows from the instances in range: one (prefab, localized name) pair per instance.
         /// Does nothing if the resulting types and counts are the same as last time.

@@ -48,6 +48,8 @@ namespace WardsPlus.Pieces
                 Component = typeof(RepairWard), ContainerWidth = 4, ContainerHeight = 2 },
             new WardDefinition { Type = WardType.Refuel, PrefabName = "WP_Ward_Refuel", Token = "wp_ward_refuel",
                 Component = typeof(RefuelWard), ContainerWidth = 4, ContainerHeight = 2 },
+            new WardDefinition { Type = WardType.Gathering, PrefabName = "WP_Ward_Gathering", Token = "wp_ward_gathering",
+                Component = typeof(GatheringWard), ContainerWidth = 5, ContainerHeight = 2, SecondaryRing = true },
             new WardDefinition { Type = WardType.Spawnproof, PrefabName = "WP_Ward_Spawnproof", Token = "wp_ward_spawnproof",
                 Component = typeof(SpawnproofWard), Distant = true },
             new WardDefinition { Type = WardType.Defender, PrefabName = "WP_Ward_Defender", Token = "wp_ward_defender",
